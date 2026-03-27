@@ -1,6 +1,7 @@
 import cors from 'cors'
 import express from 'express'
 import { config } from './config'
+import { authRoute } from './routes/authRoute'
 import { executionRoute } from './routes/executionRoute'
 import { healthRoute } from './routes/healthRoute'
 
@@ -16,6 +17,7 @@ export function createApp() {
 
   app.use('/api', healthRoute)
   app.use('/api', executionRoute)
+  app.use('/api/auth', authRoute)
 
   app.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     res.status(500).json({ error: error.message })
