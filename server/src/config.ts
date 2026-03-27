@@ -11,10 +11,23 @@ function parsePort(value: string | undefined, fallback: number): number {
   return parsed
 }
 
+function parseCorsOrigins(value: string | undefined): string[] {
+  if (!value || value.trim() === '') {
+    return ['http://localhost:5173', 'http://localhost:4173']
+  }
+
+  return value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0)
+}
+
+const corsOrigins = parseCorsOrigins(process.env.CORS_ORIGIN)
+
 export const config = {
   host: process.env.HOST ?? '0.0.0.0',
   port: parsePort(process.env.PORT, 3001),
-  corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+  corsOrigins,
   db: {
     host: process.env.DB_HOST ?? 'itecdb',
     port: parsePort(process.env.DB_PORT, 5432),

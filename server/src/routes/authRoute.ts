@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import type { LoginRequest, RegisterRequest } from '../types/auth'
 import { HttpError, login, register } from '../services/authService'
+import { listUsers } from '../services/userRepository'
 
 export const authRoute = Router()
 
@@ -37,6 +38,15 @@ authRoute.post('/login', async (req, res, next) => {
       res.status(error.statusCode).json({ error: error.message })
       return
     }
+    next(error)
+  }
+})
+
+authRoute.get('/users', async (_req, res, next) => {
+  try {
+    const users = await listUsers()
+    res.status(200).json({ users })
+  } catch (error) {
     next(error)
   }
 })
