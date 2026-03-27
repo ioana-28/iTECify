@@ -1,11 +1,13 @@
 import { useState } from "react";
 import type { SyntheticEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { apiClient } from "../services/api";
 import "../style/LoginPage.css";
 
 type DialogStep = "none" | "login" | "register";
 
 export function LoginPage() {
+  const navigate = useNavigate();
   const [dialogStep, setDialogStep] = useState<DialogStep>("none");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -45,7 +47,7 @@ export function LoginPage() {
       localStorage.setItem("authUser", JSON.stringify(result.user));
       form.reset();
       closeDialog();
-      setAuthNotice({ type: "success", message: "Login successful." });
+      navigate("/editor", { replace: true });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Login failed. Please try again.";
