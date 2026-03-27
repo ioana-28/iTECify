@@ -1,0 +1,13 @@
+{
+  "name": "itecify",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "build": "npm --prefix frontend run build && npm --prefix backend run build",
+    "typecheck": "npm --prefix backend run typecheck && npm --prefix frontend exec -- tsc -b frontend/tsconfig.json",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  }
+}

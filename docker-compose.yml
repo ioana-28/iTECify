@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    ports:
+      - "3001:3001"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      VITE_API_BASE_URL: http://localhost:3001
+      VITE_SOCKET_URL: http://localhost:3001
+    ports:
+      - "4173:4173"
+    depends_on:
+      - backend
+
+  runner-node:
+    image: node:22-alpine
+    command: sh -c "while true; do sleep 3600; done"
+    profiles: ["runners"]
+
+  runner-python:
+    image: python:3.13-alpine
+    command: sh -c "while true; do sleep 3600; done"
+    profiles: ["runners"]
+
+  runner-cpp:
+    image: gcc:14
+    command: sh -c "while true; do sleep 3600; done"
+    profiles: ["runners"]
