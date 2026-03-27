@@ -1,6 +1,14 @@
 import '../style/Toolbar.css'
 
 export const Toolbar = ({ onRun, onStop, onAddAI, onToggleSidebar }) => {
+  // Mock collaborative users - in real implementation, this would come from state
+  const collaborators = [
+    { id: 1, name: 'You', color: 'user-1', status: 'active' },
+    { id: 2, name: 'Alex', color: 'user-2', status: 'active' },
+    { id: 3, name: 'Sam', color: 'user-3', status: 'idle' },
+    { id: 4, name: 'Jordan', color: 'user-4', status: 'active' },
+  ]
+
   return (
     <div className="toolbar">
       <div className="toolbar-left">
@@ -36,7 +44,18 @@ export const Toolbar = ({ onRun, onStop, onAddAI, onToggleSidebar }) => {
       </div>
 
       <div className="toolbar-right">
-        {/* Placeholder for user presence - can be added later */}
+        <ul className="users-list">
+          {collaborators.map((user) => (
+            <li 
+              key={user.id} 
+              className={`user-avatar ${user.color}`}
+              title={`${user.name} (${user.status})`}
+            >
+              {user.name.charAt(0).toUpperCase()}
+              <span className="user-status"></span>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   )

@@ -1,7 +1,7 @@
-/* Sidebar - File Explorer - VS Code Style */
+/* Sidebar - File Explorer - Professional IDE Style */
 .sidebar {
-  background: #252526;
-  border-right: 1px solid #3e3e42;
+  background: #13171d;
+  border-right: 1px solid #22272e;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -9,13 +9,13 @@
 }
 
 .sidebar-header {
-  padding: 16px;
-  border-bottom: 1px solid #3e3e42;
+  padding: 14px 16px;
+  border-bottom: 1px solid #22272e;
   font-weight: 600;
-  font-size: 12px;
-  color: #cccccc;
+  font-size: 11px;
+  color: #8b92a9;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   flex-shrink: 0;
 }
 
@@ -26,13 +26,13 @@
 }
 
 .section-title {
-  padding: 8px 16px;
-  font-size: 11px;
+  padding: 10px 16px;
+  font-size: 10px;
   font-weight: 700;
-  color: #858585;
+  color: #565d6d;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-top: 0;
+  letter-spacing: 0.08em;
+  margin-top: 8px;
 }
 
 .file-tree {
@@ -41,28 +41,28 @@
 }
 
 .folder-contents {
-  padding-left: 12px;
+  padding-left: 14px;
 }
 
 .file-item {
-  padding: 4px 12px;
+  padding: 5px 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: #cccccc;
+  gap: 8px;
+  color: #c3cce6;
   font-size: 13px;
   transition: all 0.15s ease;
   user-select: none;
 }
 
 .file-item:hover {
-  background: #2d2d30;
-  color: #e7e7e7;
+  background: #1a202c;
+  color: #e0e6f0;
 }
 
 .folder-item:hover {
-  background: #2d2d30;
+  background: #1a202c;
 }
 
 .file-item .file-icon {
@@ -72,7 +72,7 @@
   justify-content: center;
   font-size: 11px;
   flex-shrink: 0;
-  color: #858585;
+  color: #7a8291;
 }
 
 .file-item .file-name {
@@ -88,7 +88,7 @@
 
 /* Scrollbar */
 .sidebar::-webkit-scrollbar {
-  width: 10px;
+  width: 8px;
 }
 
 .sidebar::-webkit-scrollbar-track {
@@ -96,12 +96,12 @@
 }
 
 .sidebar::-webkit-scrollbar-thumb {
-  background: #424242;
-  border-radius: 5px;
+  background: #3c4452;
+  border-radius: 4px;
 }
 
 .sidebar::-webkit-scrollbar-thumb:hover {
-  background: #4e4e4e;
+  background: #4a5568;
 }
 
 @media (max-width: 1024px) {

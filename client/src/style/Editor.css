@@ -1,12 +1,12 @@
-/* Collaborative Editor Layout - VS Code Style */
+/* Collaborative Editor Layout - Professional IDE Style */
 .editor-screen {
   display: grid;
-  grid-template-columns: 250px 1fr;
+  grid-template-columns: 260px 1fr;
   grid-template-rows: 1fr;
   height: 100vh;
-  background: #1e1e1e;
-  color: #d4d4d4;
-  font-family: 'Segoe UI', 'Monaco', 'Consolas', monospace;
+  background: #0f1419;
+  color: #e0e6f0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Monaco', 'Consolas', monospace;
   overflow: hidden;
 }
 
@@ -15,8 +15,8 @@
   grid-column: 2;
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: 50px auto 1fr 250px;
-  background: #1e1e1e;
+  grid-template-rows: 48px auto 1fr 240px;
+  background: #0f1419;
   overflow: hidden;
 }
 
@@ -24,7 +24,7 @@
 .editor-container {
   grid-row: 3;
   position: relative;
-  background: #1e1e1e;
+  background: #0f1419;
   overflow: hidden;
 }
 
@@ -35,7 +35,7 @@
 }
 
 .monaco-editor-wrapper .monaco-editor {
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+  font-family: 'Monaco', 'Consolas', 'Courier New', monospace !important;
   font-size: 14px !important;
   line-height: 1.6 !important;
 }
@@ -46,8 +46,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #1e1e1e;
-  color: #858585;
+  background: #0f1419;
+  color: #7a8291;
 }
 
 .empty-state {
@@ -57,13 +57,14 @@
 .empty-state h2 {
   font-size: 32px;
   margin: 0 0 16px 0;
-  color: #cccccc;
+  color: #e0e6f0;
+  font-weight: 600;
 }
 
 .empty-state p {
   font-size: 14px;
   margin: 0;
-  color: #858585;
+  color: #7a8291;
 }
 
 /* Responsive */
