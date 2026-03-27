@@ -1,18 +1,34 @@
-version: "3.9"
-
 services:
+  itec_db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: itec_db
+    networks:
+      default:
+        aliases:
+          - itecdb
+    ports:
+      - "5433:5432"
+
   backend:
     build:
-      context: ./backend
+      context: ./server  # Changed from ./backend to match your folder screenshot
       dockerfile: Dockerfile
     env_file:
-      - ./backend/.env
+      - ./server/.env
     ports:
       - "3001:3001"
+    volumes:
+      # THE BRIDGE: This allows your Node.js app to talk to Docker Desktop
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - itec_db
 
   frontend:
     build:
-      context: ./frontend
+      context: ./client  # Changed from ./frontend to match your folder screenshot
       dockerfile: Dockerfile
     environment:
       VITE_API_BASE_URL: http://localhost:3001
@@ -22,17 +38,6 @@ services:
     depends_on:
       - backend
 
-  runner-node:
-    image: node:22-alpine
-    command: sh -c "while true; do sleep 3600; done"
-    profiles: ["runners"]
-
-  runner-python:
-    image: python:3.13-alpine
-    command: sh -c "while true; do sleep 3600; done"
-    profiles: ["runners"]
-
-  runner-cpp:
-    image: gcc:14
-    command: sh -c "while true; do sleep 3600; done"
-    profiles: ["runners"]
+# We can remove the "runner" services from the YAML. 
+# It is better to have the Backend spin them up on-demand 
+# rather than having them "sleep" in the background forever.
