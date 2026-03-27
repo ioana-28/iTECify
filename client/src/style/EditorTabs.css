@@ -1,0 +1,117 @@
+/* Editor Tabs - Professional IDE Style */
+.editor-tabs {
+  display: flex;
+  background: #14192b;
+  border-bottom: 1px solid #22272e;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  overflow-x: auto;
+  height: auto;
+  align-items: stretch;
+  flex-shrink: 0;
+  gap: 0;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  height: 36px;
+  background: #14192b;
+  border-right: 1px solid #22272e;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  color: #8b92a9;
+  font-size: 12px;
+  transition: all 0.15s;
+  white-space: nowrap;
+  font-family: inherit;
+  user-select: none;
+}
+
+.tab:hover {
+  background: #1a202c;
+  color: #c3cce6;
+}
+
+.tab.active {
+  background: #0f1419;
+  color: #e0e6f0;
+  border-bottom-color: #3b82f6;
+}
+
+.tab-icon {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-close {
+  background: none;
+  border: none;
+  color: #7a8291;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+  transition: all 0.15s;
+  margin-left: 4px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+}
+
+.tab-close:hover {
+  background: #22272e;
+  color: #e0e6f0;
+}
+
+/* Scrollbar */
+.editor-tabs::-webkit-scrollbar {
+  height: 6px;
+}
+
+.editor-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.editor-tabs::-webkit-scrollbar-thumb {
+  background: #3c4452;
+  border-radius: 3px;
+}
+
+.editor-tabs::-webkit-scrollbar-thumb:hover {
+  background: #4a5568;
+}
+
+@media (max-width: 768px) {
+  .tab {
+    padding: 0 10px;
+    height: 32px;
+    font-size: 11px;
+  }
+
+  .tab-icon {
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .tab {
+    padding: 0 8px;
+    gap: 4px;
+  }
+
+  .tab-name {
+    display: none;
+  }
+}
+
