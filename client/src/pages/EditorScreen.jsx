@@ -194,32 +194,34 @@ export function EditorScreen() {
   }, [])
 
   useEffect(() => {
-    setTreeNodes(new Map())
-    setOpenFiles([])
-    setCurrentFile(null)
-    currentFilePathRef.current = ''
-    codeRef.current = ''
-    setCode('')
-    versionRef.current = 0
-    setPendingSuggestion(null)
-    clearAiChangeHighlights()
-  }, [clearAiChangeHighlights, currentRoomId])
-    remoteCursorsRef.current = new Map()
+  setTreeNodes(new Map())
+  setOpenFiles([])
+  setCurrentFile(null)
+  currentFilePathRef.current = ''
+  codeRef.current = ''
+  setCode('')
+  versionRef.current = 0
+  setPendingSuggestion(null)
+  clearAiChangeHighlights()
 
-    if (editorRef.current) {
-      for (const widget of remoteCursorWidgetsRef.current.values()) {
-        editorRef.current.removeContentWidget(widget)
-      }
+  remoteCursorsRef.current = new Map()
+
+  if (editorRef.current) {
+    for (const widget of remoteCursorWidgetsRef.current.values()) {
+      editorRef.current.removeContentWidget(widget)
     }
-    remoteCursorWidgetsRef.current = new Map()
+  }
 
-    if (editorRef.current) {
-      remoteCursorDecorationIdsRef.current = editorRef.current.deltaDecorations(
+  remoteCursorWidgetsRef.current = new Map()
+
+  if (editorRef.current) {
+    remoteCursorDecorationIdsRef.current =
+      editorRef.current.deltaDecorations(
         remoteCursorDecorationIdsRef.current,
-        [],
+        []
       )
-    }
-  }, [currentRoomId])
+  }
+}, [clearAiChangeHighlights, currentRoomId])
 
   useEffect(() => {
     const rawAuthUser = localStorage.getItem('authUser')
