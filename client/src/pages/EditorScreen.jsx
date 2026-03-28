@@ -177,6 +177,21 @@ export function EditorScreen() {
     setTerminalOutput((prev) => [...prev, { type, text }])
   }, [])
 
+  const requestRoomFileSync = useCallback(() => {
+    const socket = socketRef.current
+    const roomId = roomIdRef.current
+    const docId = currentFilePathRef.current
+    if (!socket || !roomId || !docId) {
+      return
+    }
+
+    socket.emit('room:join', {
+      roomId,
+      userId: userIdRef.current,
+      docId,
+    })
+  }, [])
+
   const applyRemoteCodeUpdate = useCallback((nextCode) => {
     isRemoteChangeRef.current = true
     codeRef.current = nextCode
@@ -196,10 +211,7 @@ export function EditorScreen() {
     socketRef.current = socket
 
     const emitRoomJoin = () => {
-      socket.emit('room:join', {
-        roomId: roomIdRef.current,
-        userId: userIdRef.current,
-      })
+      requestRoomFileSync()
     }
 
     socket.on('connect', emitRoomJoin)
@@ -208,7 +220,12 @@ export function EditorScreen() {
     }
 
     const handleStateSync = (payload) => {
-      if (!payload || payload.roomId !== roomIdRef.current || typeof payload.content !== 'string') {
+      if (
+        !payload ||
+        payload.roomId !== roomIdRef.current ||
+        payload.filePath !== currentFilePathRef.current ||
+        typeof payload.content !== 'string'
+      ) {
         return
       }
 
@@ -221,7 +238,12 @@ export function EditorScreen() {
     }
 
     const handleEditorPatch = (payload) => {
-      if (!payload || payload.roomId !== roomIdRef.current || !payload.op) {
+      if (
+        !payload ||
+        payload.roomId !== roomIdRef.current ||
+        payload.docId !== currentFilePathRef.current ||
+        !payload.op
+      ) {
         return
       }
 
@@ -280,7 +302,7 @@ export function EditorScreen() {
       socket.disconnect()
       socketRef.current = null
     }
-  }, [addTerminalOutput, applyRemoteCodeUpdate, applyTextOperation, currentRoomId])
+  }, [addTerminalOutput, applyRemoteCodeUpdate, applyTextOperation, currentRoomId, requestRoomFileSync])
 
   const handleOpenFile = (name, path, language) => {
     // Check if file is already open
@@ -299,6 +321,9 @@ export function EditorScreen() {
       setOpenFiles(prev => [...prev, newFile])
       setCurrentFile(newFile)
     }
+
+    currentFilePathRef.current = path
+    requestRoomFileSync()
   }
 
   const handleCloseFile = (fileId) => {
@@ -567,7 +592,11 @@ export function EditorScreen() {
               <EditorTabs 
                 files={openFiles} 
                 currentFile={currentFile}
-                onSelectFile={(file) => setCurrentFile(file)}
+                onSelectFile={(file) => {
+                  setCurrentFile(file)
+                  currentFilePathRef.current = file.path
+                  requestRoomFileSync()
+                }}
                 onCloseFile={handleCloseFile}
               />
 
