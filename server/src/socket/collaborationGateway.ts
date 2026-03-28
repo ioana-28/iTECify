@@ -17,6 +17,10 @@ import { scanCode } from '../services/vulnerabilityScanner'
 import { SandboxExecutionService } from '../services/sandboxExecutionService'
 import { executionSessionStore } from '../services/executionSessionStore'
 import type { RunLanguage } from '../types'
+import { scanCode } from '../services/vulnerabilityScanner'
+import { SandboxExecutionService } from '../services/sandboxExecutionService'
+import { executionSessionStore } from '../services/executionSessionStore'
+import type { RunLanguage } from '../types'
 
 type JoinPayload = {
   roomId: string
@@ -127,6 +131,20 @@ type SecurityChaosDetectedPayload = {
   message: string
 }
 
+type CodeExecutePayload = {
+  roomId: string
+  userId: string
+  language: RunLanguage
+  source: string
+  stdin?: string
+  stepMode?: boolean
+}
+
+type SecurityChaosDetectedPayload = {
+  type: string | null
+  message: string
+}
+
 type GatewayErrorPayload = {
   event: string
   code:
@@ -143,6 +161,7 @@ const RATE_LIMITS = {
   'editor:change': { limit: 120, windowMs: 1000 },
   'terminal:stream': { limit: 120, windowMs: 1000 },
   'code:execute': { limit: 10, windowMs: 10_000 },
+  'code:execute': { limit: 10, windowMs: 10_000 },
   'ai:propose-block': { limit: 40, windowMs: 10_000 },
   'ai:decision': { limit: 40, windowMs: 10_000 },
   'tree:sync': { limit: 30, windowMs: 1000 },
@@ -155,6 +174,7 @@ const roomFileStates = new Map<string, { content: string; version: number }>()
 function getRoomFileKey(roomId: string, docId: string): string {
   return `${roomId}::${docId}`
 }
+const sandboxExecutionService = new SandboxExecutionService()
 const sandboxExecutionService = new SandboxExecutionService()
 
 function isObject(value: unknown): value is Record<string, unknown> {
