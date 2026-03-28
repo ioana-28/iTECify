@@ -83,6 +83,8 @@ function toFileSystemFromTree(treeMap) {
 export function EditorScreen() {
   const editorRef = useRef(null)
   const socketRef = useRef(null)
+  const copilotInputRef = useRef(null)
+  const copilotConversationEndRef = useRef(null)
   const roomIdRef = useRef('')
   const userIdRef = useRef(`user-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`)
   const isRemoteChangeRef = useRef(false)
@@ -111,6 +113,15 @@ export function EditorScreen() {
   const [roomError, setRoomError] = useState('')
   const [isRoomBusy, setIsRoomBusy] = useState(false)
   const [isCopilotOpen, setIsCopilotOpen] = useState(false)
+  const [copilotDraft, setCopilotDraft] = useState('')
+  const [isCopilotBusy, setIsCopilotBusy] = useState(false)
+  const [copilotMessages, setCopilotMessages] = useState([
+    {
+      id: 'assistant-welcome',
+      role: 'assistant',
+      text: 'Hi! Ask Copilot to edit the current file and I will apply the changes directly.',
+    },
+  ])
 
   const currentRoom = rooms.find((room) => room.id === currentRoomId) || null
 
@@ -149,6 +160,22 @@ export function EditorScreen() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (!isCopilotOpen || !copilotInputRef.current) {
+      return
+    }
+
+    copilotInputRef.current.focus()
+  }, [isCopilotOpen])
+
+  useEffect(() => {
+    if (!copilotConversationEndRef.current) {
+      return
+    }
+
+    copilotConversationEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [copilotMessages, isCopilotBusy])
 
   useEffect(() => {
     loadRooms().catch((error) => {
@@ -249,6 +276,17 @@ export function EditorScreen() {
       userId: userIdRef.current,
       docId,
     })
+  }, [])
+
+  const addCopilotMessage = useCallback((role, text) => {
+    setCopilotMessages((prev) => [
+      ...prev,
+      {
+        id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        role,
+        text,
+      },
+    ])
   }, [])
 
   const applyRemoteCodeUpdate = useCallback((nextCode) => {
@@ -602,41 +640,100 @@ export function EditorScreen() {
     }
   }
 
-  const handleAddAI = async () => {
-    const instruction = window.prompt('Describe what changes you want in the current file:')
-    if (instruction === null) {
+  const handleAiUpdate = (newFullCode) => {
+    const nextCode = newFullCode || ''
+    const previousCode = codeRef.current
+    if (previousCode === nextCode) {
       return
     }
 
+    codeRef.current = nextCode
+    setCode(nextCode)
+
+    const socket = socketRef.current
+    if (!socket || !currentFilePathRef.current || !roomIdRef.current) {
+      return
+    }
+
+    const operations = buildEditorOperations(previousCode, nextCode)
+    operations.forEach((op, index) => {
+      const payload = {
+        roomId: roomIdRef.current,
+        docId: currentFilePathRef.current,
+        userId: userIdRef.current,
+        baseVersion: versionRef.current,
+        opId: `${userIdRef.current}-${Date.now()}-${index}`,
+        op,
+      }
+
+      socket.emit('editor:change', payload)
+      versionRef.current += 1
+    })
+  }
+
+  const requestAiEdit = async (instruction) => {
     const trimmedInstruction = instruction.trim()
     if (!trimmedInstruction) {
       setIsTerminalOpen(true)
       addTerminalOutput('AI edit cancelled: instruction is required.', 'warning')
+      addCopilotMessage('assistant', 'Please enter a request before sending.')
       return
     }
 
     if (!currentFile) {
       setIsTerminalOpen(true)
       addTerminalOutput('AI edit failed: no file is currently open.', 'error')
+      addCopilotMessage('assistant', 'AI edit failed: no file is currently open.')
       return
     }
 
     try {
+      setIsCopilotBusy(true)
       setIsTerminalOpen(true)
       addTerminalOutput('Sending AI edit request...', 'info')
+      const previousContent = codeRef.current
 
       const response = await apiClient.editFileWithAi({
-        content: codeRef.current,
+        content: previousContent,
         instruction: trimmedInstruction,
         language: currentFile.language || 'javascript',
       })
 
-      applyRemoteCodeUpdate(response.content)
+      handleAiUpdate(response.content)
+      const hasCodeChanges = response.content !== previousContent
       addTerminalOutput('AI edit applied successfully.', 'success')
+      addCopilotMessage(
+        'assistant',
+        hasCodeChanges
+          ? 'Done. I applied the AI edit to the current file.'
+          : 'Done. AI returned the current content with no code changes.'
+      )
     } catch (error) {
       const message = error instanceof Error ? error.message : 'AI edit failed'
       addTerminalOutput(`AI edit failed: ${message}`, 'error')
+      addCopilotMessage('assistant', `AI edit failed: ${message}`)
+    } finally {
+      setIsCopilotBusy(false)
     }
+  }
+
+  const handleAddAI = () => {
+    setIsCopilotOpen(true)
+  }
+
+  const handleCopilotSubmit = async (event) => {
+    event.preventDefault()
+
+    if (isCopilotBusy) {
+      return
+    }
+
+    const instruction = copilotDraft
+    setCopilotDraft('')
+    if (instruction.trim()) {
+      addCopilotMessage('user', instruction.trim())
+    }
+    await requestAiEdit(instruction)
   }
 
   const handleCreateRoom = async () => {
@@ -685,32 +782,7 @@ export function EditorScreen() {
       return
     }
 
-    const previousCode = codeRef.current
-    if (previousCode === nextCode) {
-      return
-    }
-    codeRef.current = nextCode
-    setCode(nextCode)
-
-    const socket = socketRef.current
-    if (!socket || !currentFilePathRef.current || !roomIdRef.current) {
-      return
-    }
-
-    const operations = buildEditorOperations(previousCode, nextCode)
-    operations.forEach((op, index) => {
-      const payload = {
-        roomId: roomIdRef.current,
-        docId: currentFilePathRef.current,
-        userId: userIdRef.current,
-        baseVersion: versionRef.current,
-        opId: `${userIdRef.current}-${Date.now()}-${index}`,
-        op,
-      }
-
-      socket.emit('editor:change', payload)
-      versionRef.current += 1
-    })
+    handleAiUpdate(nextCode)
   }
 
   return (
@@ -732,7 +804,7 @@ export function EditorScreen() {
           onRun={handleRun} 
           onRunStep={handleRunStep}
           onStop={handleStop} 
-          onAddAI={handleAddAI}
+          onAiUpdate={handleAiUpdate}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           isCopilotOpen={isCopilotOpen}
           onToggleCopilot={() => setIsCopilotOpen((prev) => !prev)}
@@ -898,37 +970,38 @@ export function EditorScreen() {
               </div>
 
               <div className="copilot-body">
-                <div className="copilot-suggestion-card">
-                  <h4>Quick suggestion</h4>
-                  <p>Improve your runtime logs and include context metadata for easier debugging.</p>
-                  <button className="copilot-primary-action">Generate better logging</button>
-                </div>
-
-                <div className="copilot-suggestion-card">
-                  <h4>Assistant note</h4>
-                  <p>I can help outline refactors for this file and suggest safer incremental changes.</p>
-                  <div className="copilot-chip-group">
-                    <button className="copilot-chip">Apply code</button>
-                    <button className="copilot-chip">Refactor</button>
-                    <button className="copilot-chip">Suggest changes</button>
-                  </div>
-                </div>
-
                 <div className="copilot-conversation">
-                  <div className="copilot-msg assistant">
-                    Hi! I am ready when you are. Ask for explanations, cleanup ideas, or testing suggestions.
-                  </div>
-                  <div className="copilot-msg user">Can you help improve readability in this file?</div>
+                  {copilotMessages.map((message) => (
+                    <div key={message.id} className={`copilot-msg ${message.role}`}>
+                      {message.text}
+                    </div>
+                  ))}
+                  {isCopilotBusy ? (
+                    <div className="copilot-msg assistant">Working on your request...</div>
+                  ) : null}
+                  <div ref={copilotConversationEndRef} />
                 </div>
               </div>
 
               <div className="copilot-input-wrap">
-                <input
-                  className="copilot-input"
-                  type="text"
-                  placeholder="Ask Copilot..."
-                  readOnly
-                />
+                <form className="copilot-input-form" onSubmit={handleCopilotSubmit}>
+                  <input
+                    ref={copilotInputRef}
+                    className="copilot-input"
+                    type="text"
+                    placeholder="Ask Copilot..."
+                    value={copilotDraft}
+                    onChange={(event) => setCopilotDraft(event.target.value)}
+                    disabled={isCopilotBusy}
+                  />
+                  <button
+                    className="copilot-send-btn"
+                    type="submit"
+                    disabled={isCopilotBusy || !copilotDraft.trim()}
+                  >
+                    Send
+                  </button>
+                </form>
               </div>
             </aside>
           ) : null}
