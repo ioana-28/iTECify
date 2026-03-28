@@ -2,6 +2,10 @@ import jwt, { type JwtPayload, type Secret } from 'jsonwebtoken'
 import type { Server, Socket } from 'socket.io'
 import { config } from '../config'
 import { isMember } from '../services/roomRepository'
+import { scanCode } from '../services/vulnerabilityScanner'
+import { SandboxExecutionService } from '../services/sandboxExecutionService'
+import { executionSessionStore } from '../services/executionSessionStore'
+import type { RunLanguage } from '../types'
 
 type JoinPayload = {
   roomId: string
@@ -79,6 +83,20 @@ type TerminalStreamPayload = {
 
 type TerminalOutputData = Omit<TerminalStreamPayload, 'roomId'>
 
+type CodeExecutePayload = {
+  roomId: string
+  userId: string
+  language: RunLanguage
+  source: string
+  stdin?: string
+  stepMode?: boolean
+}
+
+type SecurityChaosDetectedPayload = {
+  type: string | null
+  message: string
+}
+
 type GatewayErrorPayload = {
   event: string
   code:
@@ -94,12 +112,14 @@ const RATE_LIMITS = {
   'cursor:move': { limit: 60, windowMs: 1000 },
   'editor:change': { limit: 120, windowMs: 1000 },
   'terminal:stream': { limit: 120, windowMs: 1000 },
+  'code:execute': { limit: 10, windowMs: 10_000 },
   'ai:propose-block': { limit: 40, windowMs: 10_000 },
   'ai:decision': { limit: 40, windowMs: 10_000 },
 } as const
 
 const eventTimestamps = new Map<string, number[]>()
 const roomStates = new Map<string, string>()
+const sandboxExecutionService = new SandboxExecutionService()
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -366,6 +386,53 @@ function isAiDecisionPayload(payload: unknown): payload is AiDecisionPayload {
   return true
 }
 
+function isRunLanguage(value: unknown): value is RunLanguage {
+  return (
+    value === 'node' || value === 'python' || value === 'c' || value === 'cpp' || value === 'rust'
+  )
+}
+
+function isCodeExecutePayload(payload: unknown): payload is CodeExecutePayload {
+  if (!isObject(payload)) {
+    return false
+  }
+
+  if (
+    !isNonEmptyString(payload.roomId) ||
+    !isNonEmptyString(payload.userId) ||
+    !isRunLanguage(payload.language) ||
+    !isString(payload.source)
+  ) {
+    return false
+  }
+
+  if (payload.stdin !== undefined && !isString(payload.stdin)) {
+    return false
+  }
+
+  if (payload.stepMode !== undefined && typeof payload.stepMode !== 'boolean') {
+    return false
+  }
+
+  return true
+}
+
+function buildChaosMessage(type: string | null): string {
+  if (type === 'file_deletion') {
+    return "Diva, why are you trying to get rid of my stuff? This isn't a breakup!"
+  }
+
+  if (type === 'rce_attack') {
+    return 'Honey, the only thing you should be executing is a better outfit. Leave my server alone!'
+  }
+
+  if (type === 'eval_chaos') {
+    return "Oh, look at you trying to be 'sneaky' with eval(). That's so last season, darling."
+  }
+
+  return "Security alert detected. Nice try, Diva, but we're not doing that here."
+}
+
 function isTerminalStreamPayload(payload: unknown): payload is TerminalStreamPayload {
   if (!isObject(payload)) {
     return false
@@ -629,6 +696,83 @@ export function registerCollaborationGateway(io: Server): void {
         chunk: payload.chunk,
         done: payload.done,
         timestamp: payload.timestamp,
+      })
+    })
+
+    socket.on('code:execute', async (payload: unknown) => {
+      if (!isCodeExecutePayload(payload)) {
+        emitGatewayError(socket, 'code:execute', 'INVALID_PAYLOAD', 'Invalid code:execute payload.')
+        return
+      }
+
+      if (!(await enforceEventAccess(socket, payload.roomId, 'code:execute'))) {
+        return
+      }
+
+      const scanResult = scanCode(payload.source, payload.language)
+      if (scanResult.blocked) {
+        const chaosMessage = buildChaosMessage(scanResult.type)
+        socket.emit('security:chaos_detected', {
+          type: scanResult.type,
+          message: chaosMessage,
+        } satisfies SecurityChaosDetectedPayload)
+
+        broadcastTerminalOutput(io, payload.roomId, {
+          streamId: `blocked-${Date.now()}`,
+          source: 'system',
+          sequence: 0,
+          chunk: `[SECURITY] ${scanResult.summary} Execution blocked.`,
+          done: true,
+          timestamp: Date.now(),
+        })
+        return
+      }
+
+      const sessionId = sandboxExecutionService.startExecution({
+        language: payload.language,
+        source: payload.source,
+        stdin: payload.stdin,
+        stepMode: payload.stepMode ?? false,
+      })
+
+      let sequence = 0
+      const emitExecutionEvent = (message: string, source: TerminalStreamPayload['source'], done = false) => {
+        sequence += 1
+        broadcastTerminalOutput(io, payload.roomId, {
+          streamId: sessionId,
+          source,
+          sequence,
+          chunk: message,
+          done,
+          timestamp: Date.now(),
+        })
+      }
+
+      const state = executionSessionStore.getState(sessionId)
+      if (state) {
+        for (const event of state.events) {
+          const source: TerminalStreamPayload['source'] =
+            event.type === 'stderr' || event.type === 'error'
+              ? 'stderr'
+              : event.type === 'stdout'
+                ? 'stdout'
+                : 'system'
+          emitExecutionEvent(event.message, source, event.type === 'complete')
+        }
+      }
+
+      const unsubscribe = executionSessionStore.subscribe(sessionId, (event) => {
+        const source: TerminalStreamPayload['source'] =
+          event.type === 'stderr' || event.type === 'error'
+            ? 'stderr'
+            : event.type === 'stdout'
+              ? 'stdout'
+              : 'system'
+
+        emitExecutionEvent(event.message, source, event.type === 'complete')
+        if (event.type === 'complete') {
+          unsubscribe?.()
+        }
       })
     })
 
