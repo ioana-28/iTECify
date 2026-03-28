@@ -6,6 +6,7 @@ export const Toolbar = ({
   onRunStep,
   onStop,
   onAddAI,
+  onAiUpdate: _onAiUpdate,
   onToggleSidebar,
   isCopilotOpen,
   onToggleCopilot,
