@@ -149,7 +149,7 @@ export function EditorScreen() {
 
     aiChangeDecorationIdsRef.current = editor.deltaDecorations(aiChangeDecorationIdsRef.current, [])
   }, [])
-  
+
   useEffect(() => {
     setTreeNodes(new Map())
     setOpenFiles([])
@@ -1003,6 +1003,13 @@ Context handling requirements:
     await requestAiEdit(instruction)
   }
 
+  const handleCopilotInputKeyDown = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      handleCopilotSubmit(event)
+    }
+  }
+
   const handleCreateRoom = async () => {
     try {
       setIsRoomBusy(true)
@@ -1233,7 +1240,7 @@ Context handling requirements:
                   onClick={() => setIsCopilotOpen(false)}
                   title="Close Copilot panel"
                 >
-                  Γ£ò
+                  X
                 </button>
               </div>
 
@@ -1270,14 +1277,15 @@ Context handling requirements:
 
               <div className="copilot-input-wrap">
                 <form className="copilot-input-form" onSubmit={handleCopilotSubmit}>
-                  <input
+                  <textarea
                     ref={copilotInputRef}
                     className="copilot-input"
-                    type="text"
                     placeholder="Ask Copilot..."
                     value={copilotDraft}
                     onChange={(event) => setCopilotDraft(event.target.value)}
+                    onKeyDown={handleCopilotInputKeyDown}
                     disabled={isCopilotBusy}
+                    rows={3}
                   />
                   <button
                     className="copilot-send-btn"
