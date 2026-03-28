@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, Link } from "react-router-dom";
 import "./App.css";
 import { EditorPage } from "./pages/EditorPage";
 import { HealthPage } from "./pages/HealthPage";
