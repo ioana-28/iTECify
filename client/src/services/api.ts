@@ -67,8 +67,20 @@ export type EditFileWithAiPayload = {
   language: string
 }
 
+export type AiDiffChunk = {
+  id: string
+  type: 'added' | 'removed' | 'modified'
+  oldStartLine: number
+  oldEndLine: number
+  newStartLine: number
+  newEndLine: number
+  oldLines: string[]
+  newLines: string[]
+}
+
 export type EditFileWithAiResponse = {
   content: string
+  chunks: AiDiffChunk[]
 }
 
 function getAuthToken(): string | null {

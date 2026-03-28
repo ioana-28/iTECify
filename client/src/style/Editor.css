@@ -314,6 +314,80 @@
   word-break: break-word;
 }
 
+.copilot-chunk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.copilot-chunk {
+  border: 1px solid #e9ddff;
+  border-radius: 8px;
+  background: #f8f7ff;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.copilot-chunk.added {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.copilot-chunk.removed {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.copilot-chunk.modified {
+  border-color: #c4b5fd;
+  background: #f5f3ff;
+}
+
+.copilot-chunk-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.copilot-chunk-type {
+  font-size: 11px;
+  font-weight: 700;
+  color: #4c1d95;
+}
+
+.copilot-chunk-range {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.copilot-chunk-code {
+  margin: 0;
+  border-radius: 6px;
+  border: 1px solid #ddd6fe;
+  background: #ffffff;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.copilot-chunk-code.old {
+  border-color: #fca5a5;
+  background: #fff1f2;
+}
+
+.copilot-chunk-code.new {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
 .copilot-suggestion-actions {
   display: flex;
   gap: 8px;

@@ -1225,79 +1225,6 @@ Context handling requirements:
     [isExplicitFullRewriteRequest]
   )
 
-  const mergeSuggestedCodeWithCurrent = useCallback(
-    ({ currentContent, baseContent, suggestedContent, instruction }) => {
-      if (isExplicitFullRewriteRequest(instruction)) {
-        return { content: suggestedContent, strategy: 'full-rewrite' }
-      }
-
-      if (suggestedContent === baseContent) {
-        return { content: currentContent, strategy: 'no-change' }
-      }
-
-      if (currentContent === baseContent) {
-        return { content: suggestedContent, strategy: 'replace-from-base' }
-      }
-
-      const base = baseContent || ''
-      const suggestion = suggestedContent || ''
-      if (!suggestion.trim()) {
-        return { content: currentContent, strategy: 'no-change' }
-      }
-
-      let prefixLength = 0
-      while (
-        prefixLength < base.length &&
-        prefixLength < suggestion.length &&
-        base[prefixLength] === suggestion[prefixLength]
-      ) {
-        prefixLength += 1
-      }
-
-      let baseSuffix = base.length - 1
-      let suggestionSuffix = suggestion.length - 1
-      while (
-        baseSuffix >= prefixLength &&
-        suggestionSuffix >= prefixLength &&
-        base[baseSuffix] === suggestion[suggestionSuffix]
-      ) {
-        baseSuffix -= 1
-        suggestionSuffix -= 1
-      }
-
-      const oldSegment = baseSuffix >= prefixLength ? base.slice(prefixLength, baseSuffix + 1) : ''
-      const newSegment =
-        suggestionSuffix >= prefixLength ? suggestion.slice(prefixLength, suggestionSuffix + 1) : ''
-
-      if (oldSegment) {
-        const firstOccurrence = currentContent.indexOf(oldSegment)
-        if (firstOccurrence !== -1) {
-          const secondOccurrence = currentContent.indexOf(oldSegment, firstOccurrence + 1)
-          if (secondOccurrence === -1) {
-            const merged = `${currentContent.slice(0, firstOccurrence)}${newSegment}${currentContent.slice(firstOccurrence + oldSegment.length)}`
-            return { content: merged, strategy: 'segment-replace' }
-          }
-        }
-      }
-
-      if (newSegment.trim() && currentContent.includes(newSegment)) {
-        return { content: currentContent, strategy: 'no-change' }
-      }
-
-      const appendBlock = (newSegment || suggestion).trim()
-      if (!appendBlock) {
-        return { content: currentContent, strategy: 'no-change' }
-      }
-
-      const separator = currentContent.endsWith('\n\n') ? '' : currentContent.endsWith('\n') ? '\n' : '\n\n'
-      return {
-        content: `${currentContent}${separator}${appendBlock}`,
-        strategy: 'append-fallback',
-      }
-    },
-    [isExplicitFullRewriteRequest]
-  )
-
   const requestAiEdit = async (instruction) => {
     const trimmedInstruction = instruction.trim()
     if (!trimmedInstruction) {
@@ -1336,6 +1263,7 @@ Context handling requirements:
       setPendingSuggestion({
         id: `suggestion-${Date.now()}`,
         content: response.content || '',
+        chunks: Array.isArray(response.chunks) ? response.chunks : [],
         previewContent,
         baseContent: previousContent,
         instruction: trimmedInstruction,
@@ -1374,30 +1302,19 @@ Context handling requirements:
     }
 
     const currentContent = codeRef.current
-    const { content: mergedContent, strategy } = mergeSuggestedCodeWithCurrent({
-      currentContent,
-      baseContent: pendingSuggestion.baseContent || '',
-      suggestedContent: pendingSuggestion.content || '',
-      instruction: pendingSuggestion.instruction || '',
-    })
+    const finalContent = pendingSuggestion.content || ''
 
     clearAiChangeHighlights()
-    if (mergedContent !== currentContent) {
-      handleAiUpdate(mergedContent)
+    if (finalContent !== currentContent) {
+      handleAiUpdate(finalContent)
     }
 
-    if (strategy === 'full-rewrite') {
-      addTerminalOutput('AI suggestion applied as full rewrite (explicit request).', 'success')
-      addCopilotMessage('assistant', 'Applied the full-file rewrite you requested.')
-    } else if (strategy === 'append-fallback') {
-      addTerminalOutput('AI suggestion applied without replacing unrelated code.', 'success')
-      addCopilotMessage('assistant', 'Applied the suggestion safely on top of current code.')
-    } else if (strategy === 'no-change') {
+    if (finalContent === currentContent) {
       addTerminalOutput('AI suggestion produced no new changes to apply.', 'info')
       addCopilotMessage('assistant', 'No additional changes were applied.')
     } else {
-      addTerminalOutput('AI suggestion merged and applied successfully.', 'success')
-      addCopilotMessage('assistant', 'Applied the suggested edit to current code without replacing the whole file.')
+      addTerminalOutput('AI suggestion applied successfully.', 'success')
+      addCopilotMessage('assistant', 'Applied all suggested changes.')
     }
 
     setPendingSuggestion(null)
@@ -1693,9 +1610,34 @@ Context handling requirements:
                 {pendingSuggestion ? (
                   <div className="copilot-suggestion-preview">
                     <div className="copilot-suggestion-heading">Pending suggestion</div>
-                    <pre className="copilot-suggestion-code">
-                      <code>{pendingSuggestion.previewContent || '// No code differences detected.'}</code>
-                    </pre>
+                    {Array.isArray(pendingSuggestion.chunks) && pendingSuggestion.chunks.length > 0 ? (
+                      <div className="copilot-chunk-list">
+                        {pendingSuggestion.chunks.map((chunk) => (
+                          <div key={chunk.id} className={`copilot-chunk ${chunk.type}`}>
+                            <div className="copilot-chunk-meta">
+                              <span className="copilot-chunk-type">{chunk.type.toUpperCase()}</span>
+                              <span className="copilot-chunk-range">
+                                old {chunk.oldStartLine}-{Math.max(chunk.oldStartLine, chunk.oldEndLine)} | new {chunk.newStartLine}-{Math.max(chunk.newStartLine, chunk.newEndLine)}
+                              </span>
+                            </div>
+                            {chunk.oldLines.length > 0 ? (
+                              <pre className="copilot-chunk-code old">
+                                <code>{chunk.oldLines.join('\n')}</code>
+                              </pre>
+                            ) : null}
+                            {chunk.newLines.length > 0 ? (
+                              <pre className="copilot-chunk-code new">
+                                <code>{chunk.newLines.join('\n')}</code>
+                              </pre>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <pre className="copilot-suggestion-code">
+                        <code>{pendingSuggestion.previewContent || '// No code differences detected.'}</code>
+                      </pre>
+                    )}
                     <div className="copilot-suggestion-actions">
                       <button className="copilot-keep-all-btn" type="button" onClick={handleKeepAllSuggestion}>
                         Keep all
