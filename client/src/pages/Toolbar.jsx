@@ -1,13 +1,21 @@
+import { useNavigate } from 'react-router-dom'
 import '../style/Toolbar.css'
 
-export const Toolbar = ({ onRun, onRunStep, onStop, onAddAI, onToggleSidebar }) => {
-  // Mock collaborative users - in real implementation, this would come from state
-  const collaborators = [
-    { id: 1, name: 'You', color: 'user-1', status: 'active' },
-    { id: 2, name: 'Alex', color: 'user-2', status: 'active' },
-    { id: 3, name: 'Sam', color: 'user-3', status: 'idle' },
-    { id: 4, name: 'Jordan', color: 'user-4', status: 'active' },
-  ]
+export const Toolbar = ({
+  onRun,
+  onRunStep,
+  onStop,
+  onAddAI,
+  onToggleSidebar,
+  isCopilotOpen,
+  onToggleCopilot,
+}) => {
+  const navigate = useNavigate()
+
+  const handleLogout = () => {
+    localStorage.removeItem('authToken')
+    navigate('/')
+  }
 
   return (
     <div className="toolbar">
@@ -20,10 +28,10 @@ export const Toolbar = ({ onRun, onRunStep, onStop, onAddAI, onToggleSidebar }) 
           ☰
         </button>
         <span className="separator"></span>
-        <button className="toolbar-btn" onClick={onRun} title="Run (F5)">
+        <button className="toolbar-btn run" onClick={onRun} title="Run (F5)">
           ▶ Run
         </button>
-        <button className="toolbar-btn" onClick={onRunStep} title="Step Run (F6)">
+        <button className="toolbar-btn step" onClick={onRunStep} title="Step Run (F6)">
           ⏭ Step
         </button>
         <button
@@ -47,18 +55,16 @@ export const Toolbar = ({ onRun, onRunStep, onStop, onAddAI, onToggleSidebar }) 
       </div>
 
       <div className="toolbar-right">
-        <ul className="users-list">
-          {collaborators.map((user) => (
-            <li 
-              key={user.id} 
-              className={`user-avatar ${user.color}`}
-              title={`${user.name} (${user.status})`}
-            >
-              {user.name.charAt(0).toUpperCase()}
-              <span className="user-status"></span>
-            </li>
-          ))}
-        </ul>
+        <button
+          className={`toolbar-btn copilot ${isCopilotOpen ? 'active' : ''}`}
+          onClick={onToggleCopilot}
+          title="Toggle Copilot panel"
+        >
+          {isCopilotOpen ? 'Copilot: ON' : 'Copilot: OFF'}
+        </button>
+        <button className="toolbar-logout-btn" onClick={handleLogout} title="Logout">
+          Logout
+        </button>
       </div>
     </div>
   )

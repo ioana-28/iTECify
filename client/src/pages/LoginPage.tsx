@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { SyntheticEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "../services/api";
+import logo from "../assets/logo.png";
 import "../style/LoginPage.css";
 
 type AuthMode = "register" | "login";
@@ -76,10 +77,12 @@ export function LoginPage() {
   return (
     <section className="login-page">
       <div className="auth-card">
-        <p className="auth-brand">iTECify</p>
-        <p className="auth-welcome">Welcome to iTECify</p>
+        <img
+          className="auth-brand-logo"
+          src={logo}
+          alt="iTECify logo"/>
 
-        <h1>{authMode === "register" ? "Sign up" : "Sign in"}</h1>
+        <h1>{authMode === "register" ? "Sign up" : "Log in"}</h1>
         <p className="auth-subtitle">
           {authMode === "register" ? "Join the community today!" : "Great to see you again."}
         </p>
@@ -120,7 +123,7 @@ export function LoginPage() {
           )}
 
           <button type="submit" className="auth-submit" disabled={isSubmitting}>
-            {isSubmitting ? "Loading..." : authMode === "register" ? "Sign up" : "Sign in"}
+            {isSubmitting ? "Loading..." : authMode === "register" ? "Sign up" : "Log in"}
           </button>
         </form>
 
@@ -133,7 +136,7 @@ export function LoginPage() {
             onClick={authMode === "register" ? switchToLogin : switchToRegister}
             disabled={isSubmitting}
           >
-            {authMode === "register" ? "Sign in" : "Register"}
+            {authMode === "register" ? "Log in" : "Register"}
           </button>
         </p>
       </div>

@@ -1,21 +1,21 @@
-/* Terminal - Professional IDE Style */
+/* Terminal - Soft Pastel Purple */
 .terminal-panel {
-  background: #0f1419;
-  border-top: 1px solid #22272e;
+  background: #ffffff;
+  border-top: 1px solid #ddd6fe;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  grid-row: 4;
+  min-height: 220px;
 }
 
 .terminal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  background: #14192b;
-  border-bottom: 1px solid #22272e;
-  height: 36px;
+  padding: 10px 12px;
+  background: rgba(237, 233, 254, 0.62);
+  border-bottom: 1px solid #ddd6fe;
+  height: 40px;
   flex-shrink: 0;
   gap: 8px;
 }
@@ -26,32 +26,32 @@
   gap: 8px;
   font-size: 12px;
   font-weight: 600;
-  color: #8b92a9;
+  color: #6b7280;
   margin: 0;
 }
 
 .terminal-icon {
   font-size: 10px;
-  color: #7a8291;
+  color: #8b5cf6;
 }
 
 .terminal-close-btn {
-  background: none;
-  border: none;
-  color: #7a8291;
+  background: #ffffff;
+  border: 1px solid #ddd6fe;
+  color: #6b7280;
   cursor: pointer;
   font-size: 14px;
   padding: 2px 6px;
   transition: all 0.15s;
-  border-radius: 2px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .terminal-close-btn:hover {
-  background: #22272e;
-  color: #c3cce6;
+  background: #ede9fe;
+  color: #1f2937;
 }
 
 .terminal-content {
@@ -61,34 +61,35 @@
   font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
   font-size: 12px;
   line-height: 1.5;
-  color: #c3cce6;
+  color: #1f2937;
   white-space: pre-wrap;
   word-wrap: break-word;
+  background: #ffffff;
 }
 
 .terminal-line {
   margin: 0;
-  color: #c3cce6;
+  color: #1f2937;
 }
 
 .terminal-line.error {
-  color: #ef4444;
+  color: #b91c1c;
 }
 
 .terminal-line.success {
-  color: #10b981;
+  color: #15803d;
 }
 
 .terminal-line.warning {
-  color: #f59e0b;
+  color: #92400e;
 }
 
 .terminal-line.info {
-  color: #3b82f6;
+  color: #6d28d9;
 }
 
 .terminal-empty {
-  color: #565d6d;
+  color: #6b7280;
 }
 
 /* Scrollbar */
@@ -101,12 +102,12 @@
 }
 
 .terminal-content::-webkit-scrollbar-thumb {
-  background: #3c4452;
-  border-radius: 4px;
+  background: #c4b5fd;
+  border-radius: 999px;
 }
 
 .terminal-content::-webkit-scrollbar-thumb:hover {
-  background: #4a5568;
+  background: #a78bfa;
 }
 
 @media (max-width: 768px) {
@@ -116,7 +117,7 @@
   }
 
   .terminal-header {
-    height: 32px;
+    height: 36px;
     padding: 6px 10px;
   }
 }

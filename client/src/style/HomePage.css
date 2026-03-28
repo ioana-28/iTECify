@@ -1,0 +1,486 @@
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&display=swap");
+
+.home-page {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  min-height: 100vh;
+  justify-content: center;
+  align-items: center;
+  padding: clamp(48px, 9vh, 96px) 24px;
+  background:
+    radial-gradient(circle at 14% 12%, rgba(224, 224, 255, 0.98) 0%, rgba(224, 224, 255, 0) 44%),
+    radial-gradient(circle at 86% 14%, rgba(160, 160, 255, 0.48) 0%, rgba(160, 160, 255, 0) 40%),
+    radial-gradient(circle at 76% 84%, rgba(224, 224, 255, 0.74) 0%, rgba(224, 224, 255, 0) 46%),
+    radial-gradient(circle at 18% 88%, rgba(160, 160, 255, 0.34) 0%, rgba(160, 160, 255, 0) 42%),
+    linear-gradient(135deg, #f0eeff 0%, #dde0ff 44%, #ece8ff 100%);
+}
+
+.home-page::before,
+.home-page::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.home-page::before {
+  width: 520px;
+  height: 520px;
+  top: -180px;
+  left: -150px;
+  background: radial-gradient(circle at 32% 32%, rgba(160, 160, 255, 0.4), rgba(160, 160, 255, 0));
+}
+
+.home-page::after {
+  width: 480px;
+  height: 480px;
+  bottom: -170px;
+  right: -150px;
+  background: radial-gradient(circle at 60% 40%, rgba(224, 224, 255, 0.62), rgba(224, 224, 255, 0));
+}
+
+.home-gradient-overlay {
+  position: absolute;
+  inset: -24%;
+  background:
+    conic-gradient(from 18deg at 30% 40%, rgba(160, 160, 255, 0.2), rgba(224, 224, 255, 0.04), rgba(160, 160, 255, 0.2)),
+    conic-gradient(from 250deg at 70% 60%, rgba(224, 224, 255, 0.16), rgba(160, 160, 255, 0.06), rgba(224, 224, 255, 0.16));
+  mix-blend-mode: soft-light;
+  animation: meshDrift 22s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.home-shapes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.home-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: min(100%, 1100px);
+  gap: 0;
+  padding: clamp(16px, 3vh, 44px) 0;
+}
+
+.home-logo-wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.home-logo {
+  position: relative;
+  z-index: 2;
+  display: block;
+  width: min(88vw, 1080px);
+  height: auto;
+  max-height: min(62vh, 620px);
+  max-width: 65%;
+  object-fit: contain;
+  filter: drop-shadow(0 24px 50px rgba(105, 117, 214, 0.3));
+  transition: transform 0.25s ease, filter 0.25s ease;
+  margin: 0 0 clamp(50px, 6vh, 68px);
+  
+}
+
+.logo-bubble-field {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.logo-code-bubble {
+  --bubble-dx: 0px;
+  --bubble-dy: -120px;
+  --bubble-scale: 1;
+  --bubble-duration: 1500ms;
+  position: absolute;
+  transform: translate(-50%, -50%) scale(0.72);
+  transform-origin: center;
+  white-space: nowrap;
+  font-family: "Montserrat", "Segoe UI", sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #5f5cd3;
+  line-height: 1;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(174, 160, 255, 0.55);
+  background: linear-gradient(145deg, rgba(246, 243, 255, 0.66), rgba(230, 224, 255, 0.34));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow:
+    0 14px 28px rgba(114, 110, 202, 0.2),
+    inset 0 1px 1px rgba(255, 255, 255, 0.7);
+  opacity: 0;
+  animation: codeBubbleFloat var(--bubble-duration) cubic-bezier(0.24, 0.79, 0.31, 0.98) forwards;
+}
+
+.home-logo:hover {
+  transform: scale(1.012);
+  filter: drop-shadow(0 28px 58px rgba(105, 117, 214, 0.36));
+}
+
+.home-message {
+  margin: 0;
+  font-size: clamp(28px, 4vw, 46px);
+  line-height: 1.13;
+  color: #5451c6;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  font-family: "Montserrat", "Segoe UI", sans-serif;
+  text-wrap: balance;
+  margin-bottom:10px;
+}
+
+.home-login-wrap {
+  position: relative;
+  display: inline-flex;
+  margin-top: 26px;
+}
+
+.home-login-button {
+  display: inline-block;
+  position: relative;
+  z-index: 2;
+  margin-top: 0;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  border-radius: 999px;
+  padding: 14px 34px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.34), rgba(235, 236, 255, 0.2));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: #4f4fc7;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: "Montserrat", "Segoe UI", sans-serif;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  box-shadow:
+    0 16px 34px rgba(121, 126, 214, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.button-bubble {
+  --dx: 0px;
+  --dy: -18px;
+  --scale-end: 1;
+  position: absolute;
+  z-index: 1;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.95), rgba(224, 228, 255, 0.5));
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow:
+    0 8px 16px rgba(130, 137, 220, 0.16),
+    inset 0 1px 2px rgba(255, 255, 255, 0.7);
+  opacity: 0;
+  animation: bubbleFloat 4.8s ease-in-out infinite;
+}
+
+.bubble-a {
+  width: 7px;
+  height: 7px;
+  left: 14%;
+  top: -7px;
+  --dx: -8px;
+  --dy: -18px;
+  animation-delay: 0.2s;
+}
+
+.bubble-b {
+  width: 10px;
+  height: 10px;
+  left: 43%;
+  top: -8px;
+  --dx: 2px;
+  --dy: -22px;
+  animation-delay: 1.2s;
+}
+
+.bubble-c {
+  width: 8px;
+  height: 8px;
+  right: 18%;
+  top: -7px;
+  --dx: 8px;
+  --dy: -17px;
+  animation-delay: 2s;
+}
+
+.bubble-d {
+  width: 11px;
+  height: 11px;
+  left: -9px;
+  top: 36%;
+  --dx: -16px;
+  --dy: -4px;
+  animation-delay: 3.1s;
+}
+
+.bubble-e {
+  width: 6px;
+  height: 6px;
+  right: -8px;
+  top: 42%;
+  --dx: 14px;
+  --dy: -2px;
+  animation-delay: 3.8s;
+}
+
+.bubble-f {
+  width: 8px;
+  height: 8px;
+  left: 22%;
+  bottom: -7px;
+  --dx: -8px;
+  --dy: 16px;
+  --scale-end: 1.08;
+  animation-delay: 0.8s;
+}
+
+.bubble-g {
+  width: 10px;
+  height: 10px;
+  left: 52%;
+  bottom: -9px;
+  --dx: 3px;
+  --dy: 20px;
+  --scale-end: 1.1;
+  animation-delay: 2.5s;
+}
+
+.bubble-h {
+  width: 7px;
+  height: 7px;
+  right: 21%;
+  bottom: -7px;
+  --dx: 9px;
+  --dy: 15px;
+  --scale-end: 1.06;
+  animation-delay: 4.1s;
+}
+
+.home-login-button:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.46), rgba(235, 236, 255, 0.26));
+}
+
+.home-login-button:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 4px rgba(160, 160, 255, 0.42),
+    0 16px 34px rgba(121, 126, 214, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.glass-shape {
+  position: absolute;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0.08));
+  box-shadow:
+    0 22px 42px rgba(88, 95, 187, 0.12),
+    inset 0 1px 2px rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  opacity: 0.62;
+  animation: floatShape 12s ease-in-out infinite;
+}
+
+.sphere {
+  border-radius: 50%;
+}
+
+.cube {
+  border-radius: 22px;
+}
+
+.sphere-one {
+  width: 88px;
+  height: 88px;
+  top: 17%;
+  left: 12%;
+  animation-delay: 0s;
+}
+
+.sphere-two {
+  width: 64px;
+  height: 64px;
+  right: 13%;
+  bottom: 18%;
+  animation-delay: 3s;
+}
+
+.cube-one {
+  width: 72px;
+  height: 72px;
+  top: 21%;
+  right: 19%;
+  transform: rotate(22deg);
+  animation-delay: 1.5s;
+}
+
+.cube-two {
+  width: 58px;
+  height: 58px;
+  bottom: 21%;
+  left: 17%;
+  transform: rotate(-18deg);
+  animation-delay: 4s;
+}
+
+@keyframes floatShape {
+  0% {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  50% {
+    transform: translateY(-10px) rotate(3deg);
+  }
+
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+}
+
+@keyframes meshDrift {
+  0% {
+    transform: translate3d(-2%, -1%, 0) scale(1.02);
+  }
+
+  100% {
+    transform: translate3d(2%, 1%, 0) scale(1.06);
+  }
+}
+
+@keyframes bubbleFloat {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.7);
+  }
+
+  25% {
+    opacity: 0.8;
+  }
+
+  70% {
+    opacity: 0.35;
+    transform: translate3d(var(--dx), var(--dy), 0) scale(var(--scale-end));
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--dx), var(--dy), 0) scale(calc(var(--scale-end) + 0.06));
+  }
+}
+
+@keyframes codeBubbleFloat {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate3d(0, 0, 0) scale(calc(var(--bubble-scale) * 0.74));
+  }
+
+  18% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) translate3d(calc(var(--bubble-dx) * 0.36), calc(var(--bubble-dy) * 0.35), 0)
+      scale(var(--bubble-scale));
+  }
+
+  74% {
+    opacity: 0.38;
+    transform: translate(-50%, -50%) translate3d(calc(var(--bubble-dx) * 0.78), calc(var(--bubble-dy) * 0.84), 0)
+      scale(calc(var(--bubble-scale) * 1.04));
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate3d(var(--bubble-dx), var(--bubble-dy), 0)
+      scale(calc(var(--bubble-scale) * 1.08));
+  }
+}
+
+@media (max-width: 860px) {
+  .home-page {
+    padding: clamp(40px, 7vh, 64px) 20px;
+  }
+
+  .home-logo {
+    width: min(92vw, 820px);
+    max-height: min(56vh, 460px);
+  }
+
+  .logo-code-bubble {
+    font-size: 11px;
+    padding: 7px 11px;
+  }
+
+  .home-message {
+    font-size: clamp(26px, 4.8vw, 36px);
+  }
+
+  .sphere-one {
+    width: 68px;
+    height: 68px;
+  }
+
+  .cube-one {
+    width: 56px;
+    height: 56px;
+  }
+}
+
+@media (max-width: 540px) {
+  .home-page {
+    padding: 32px 16px;
+  }
+
+  .home-logo {
+    width: min(92vw, 460px);
+    max-height: min(48vh, 300px);
+    margin-bottom: 28px;
+  }
+
+  .logo-code-bubble {
+    font-size: 10px;
+    padding: 6px 10px;
+  }
+
+  .home-message {
+    font-size: clamp(22px, 8vw, 30px);
+  }
+
+  .home-login-button {
+    padding: 12px 28px;
+  }
+
+  .home-login-wrap {
+    margin-top: 22px;
+  }
+
+  .glass-shape {
+    opacity: 0.5;
+  }
+
+  .sphere-one,
+  .sphere-two,
+  .cube-one,
+  .cube-two {
+    transform: scale(0.86);
+  }
+}

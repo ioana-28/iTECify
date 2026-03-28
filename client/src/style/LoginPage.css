@@ -1,7 +1,7 @@
 .auth-form {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 18px;
 }
 
 .auth-form label {
@@ -37,18 +37,20 @@
 
 .auth-form input {
   width: 100%;
-  padding: 12px 4px 10px;
-  border: none;
-  border-bottom: 1px solid #cad3f0;
-  background: transparent;
+  padding: 12px 14px;
+  border: 1px solid #e0e6f7;
+  border-radius: 12px;
+  background: #f8faff;
   color: #3a4577;
   font-size: 16px;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
 .auth-form input:focus {
   outline: none;
-  border-color: #7c7af5;
+  border-color: #a7b5fa;
+  box-shadow: 0 0 0 4px rgba(124, 122, 245, 0.13);
+  background: #ffffff;
 }
 
 .auth-form input::placeholder {
@@ -94,8 +96,8 @@
 
 .auth-card {
   position: relative;
-  width: min(760px, 100%);
-  padding: 70px 110px;
+  width: min(400px, 100%);
+  padding: 40px 32px;
   border-radius: 36px;
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(146, 165, 255, 0.25);
@@ -135,30 +137,31 @@
   z-index: 1;
 }
 
-.auth-brand {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 700;
-  color: #6c63e6;
-  letter-spacing: 0.03em;
+.auth-brand-logo {
+  display: block;
+  height: 70px;
+  margin-bottom:0px;
+  width: auto;
+  max-width: 100%;
+  margin: 0 auto;
 }
 
 .auth-welcome {
-  margin: 10px 0 26px;
+  margin: 10px 0 20px;
   font-size: 15px;
   color: #8692c7;
 }
 
 .auth-card h1 {
   margin: 0;
-  font-size: 44px;
+  font-size: 28px;
   line-height: 1.15;
   color: #5e56d7;
   font-weight: 700;
 }
 
 .auth-subtitle {
-  margin: 12px 0 34px;
+  margin: 10px 0 24px;
   font-size: 16px;
   color: #97a0cd;
 }
@@ -213,12 +216,12 @@
 
 @media (max-width: 860px) {
   .auth-card {
-    padding: 52px 36px;
+    padding: 36px 28px;
     border-radius: 30px;
   }
 
   .auth-card h1 {
-    font-size: 38px;
+    font-size: 26px;
   }
 }
 
@@ -227,12 +230,16 @@
     padding: 36px 16px;
   }
 
+  .auth-brand-logo {
+    height: 78px;
+  }
+
   .auth-card {
-    padding: 44px 24px;
+    padding: 32px 20px;
     border-radius: 24px;
   }
 
   .auth-card h1 {
-    font-size: 34px;
+    font-size: 24px;
   }
 }
