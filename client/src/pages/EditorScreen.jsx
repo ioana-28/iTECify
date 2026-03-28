@@ -915,6 +915,7 @@ Context handling requirements:
         instruction: trimmedInstruction,
         hasCodeChanges,
       })
+      highlightAiChangedLines(previousContent, response.content || '')
       addTerminalOutput('AI suggestion ready. Review it in Copilot panel.', 'success')
       addCopilotMessage(
         'assistant',
@@ -954,13 +955,9 @@ Context handling requirements:
       instruction: pendingSuggestion.instruction || '',
     })
 
+    clearAiChangeHighlights()
     if (mergedContent !== currentContent) {
       handleAiUpdate(mergedContent)
-      setTimeout(() => {
-        highlightAiChangedLines(currentContent, mergedContent)
-      }, 0)
-    } else {
-      clearAiChangeHighlights()
     }
 
     if (strategy === 'full-rewrite') {
@@ -986,6 +983,7 @@ Context handling requirements:
     }
 
     setPendingSuggestion(null)
+    clearAiChangeHighlights()
     addTerminalOutput('AI suggestion discarded.', 'info')
     addCopilotMessage('assistant', 'Suggestion discarded. The editor content was not changed.')
   }
