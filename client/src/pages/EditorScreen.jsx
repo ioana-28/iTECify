@@ -855,10 +855,8 @@ export function EditorScreen() {
         {/* Toolbar */}
         <Toolbar 
           onRun={handleRun} 
-          onRunStep={handleRunStep}
           onStop={handleStop} 
           onAiUpdate={handleAiUpdate}
-          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           isTerminalOpen={isTerminalOpen}
           onToggleTerminal={() => setIsTerminalOpen((prev) => !prev)}
           isCopilotOpen={isCopilotOpen}

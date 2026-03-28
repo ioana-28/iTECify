@@ -1,13 +1,14 @@
 import Docker from 'dockerode'
 import tar from 'tar-stream'
 import { randomUUID } from 'node:crypto'
+import { config } from '../config'
 import type { ExecutionSessionEvent, RunCodeRequest } from '../types'
 import { executionSessionStore } from './executionSessionStore'
 import { languageSpecs } from './languageSpecs'
 import { scanSourceForRisks } from './vulnerabilityScanner'
 
 const docker = new Docker()
-const EXECUTION_TIMEOUT_MS = 10_000
+const EXECUTION_TIMEOUT_MS = config.execution.timeoutMs
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -94,6 +95,8 @@ export class SandboxExecutionService {
           AutoRemove: false,
           Memory: 256 * 1024 * 1024,
           NanoCpus: 1_000_000_000,
+          PidsLimit: 128,
+          SecurityOpt: ['no-new-privileges:true'],
           NetworkMode: 'none',
         },
       })
@@ -113,11 +116,10 @@ export class SandboxExecutionService {
         timestamps: false,
       })
 
-      const waitResult = await this.waitWithTimeout(container, EXECUTION_TIMEOUT_MS)
       const logs = await logsPromise
-
-      // Process logs in real-time
-      await this.streamLogs(sessionId, logs)
+      const streamTask = this.streamLogs(sessionId, logs)
+      const waitResult = await this.waitWithTimeout(container, EXECUTION_TIMEOUT_MS)
+      await streamTask
 
       emit(sessionId, {
         type: 'complete',
@@ -209,17 +211,20 @@ export class SandboxExecutionService {
       const stderrBuffer: Buffer[] = []
       let lastStdoutLength = 0
       let lastStderrLength = 0
+      let pending = Buffer.alloc(0)
 
       logs.on('data', (chunk: Buffer) => {
         // Docker logs use 8-byte headers: [streamType(1), reserved(3), length(4)]
-        while (chunk.length >= 8) {
-          const streamType = chunk.readUInt8(0)
-          const frameSize = chunk.readUInt32BE(4)
-          
-          if (chunk.length < 8 + frameSize) break
-          
-          const payload = chunk.subarray(8, 8 + frameSize)
-          
+        pending = Buffer.concat([pending, chunk])
+        while (pending.length >= 8) {
+          const streamType = pending.readUInt8(0)
+          const frameSize = pending.readUInt32BE(4)
+          if (pending.length < 8 + frameSize) {
+            break
+          }
+
+          const payload = pending.subarray(8, 8 + frameSize)
+
           if (streamType === 1) {
             stdoutBuffer.push(payload)
             const newStdout = Buffer.concat(stdoutBuffer).toString('utf8')
@@ -241,8 +246,8 @@ export class SandboxExecutionService {
             }
             lastStderrLength = newStderr.length
           }
-          
-          chunk = chunk.subarray(8 + frameSize)
+
+          pending = pending.subarray(8 + frameSize)
         }
       })
 
