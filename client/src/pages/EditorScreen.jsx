@@ -446,7 +446,7 @@ export function EditorScreen() {
         language: currentFile.language || 'javascript',
       })
 
-      applyRemoteCodeUpdate(response.content)
+      handleAiUpdate(response.content)
       addTerminalOutput('AI edit applied successfully.', 'success')
       setCopilotMessages((prev) => [
         ...prev,
@@ -540,32 +540,7 @@ export function EditorScreen() {
       return
     }
 
-    const previousCode = codeRef.current
-    if (previousCode === nextCode) {
-      return
-    }
-    codeRef.current = nextCode
-    setCode(nextCode)
-
-    const socket = socketRef.current
-    if (!socket || !currentFilePathRef.current || !roomIdRef.current) {
-      return
-    }
-
-    const operations = buildEditorOperations(previousCode, nextCode)
-    operations.forEach((op, index) => {
-      const payload = {
-        roomId: roomIdRef.current,
-        docId: currentFilePathRef.current,
-        userId: userIdRef.current,
-        baseVersion: versionRef.current,
-        opId: `${userIdRef.current}-${Date.now()}-${index}`,
-        op,
-      }
-
-      socket.emit('editor:change', payload)
-      versionRef.current += 1
-    })
+    handleAiUpdate(nextCode)
   }
 
   return (
@@ -584,7 +559,9 @@ export function EditorScreen() {
         <Toolbar
           onRun={handleRun}
           onRunStep={handleRunStep}
-          onStop={handleStop}
+          onStop={handleStop} 
+          onAddAI={handleAddAI}
+          onAiUpdate={handleAiUpdate}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           isCopilotOpen={isCopilotOpen}
           onToggleCopilot={() => setIsCopilotOpen((prev) => !prev)}
