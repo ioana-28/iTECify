@@ -9,6 +9,77 @@ import { createCollabSocket } from '../services/socket'
 import { apiClient } from '../services/api'
 import '../style/Editor.css'
 
+function toTreeMap(nodes) {
+  const map = new Map()
+  ;(nodes || []).forEach((node) => {
+    if (!node || typeof node.path !== 'string') {
+      return
+    }
+
+    map.set(node.path, {
+      path: node.path,
+      name: typeof node.name === 'string' && node.name ? node.name : node.path.split('/').pop() || node.path,
+      type: node.type === 'folder' ? 'folder' : 'file',
+      parentPath: typeof node.parentPath === 'string' && node.parentPath ? node.parentPath : null,
+    })
+  })
+
+  return map
+}
+
+function getLanguageFromPath(path) {
+  if (path.endsWith('.js') || path.endsWith('.jsx')) return 'javascript'
+  if (path.endsWith('.css')) return 'css'
+  if (path.endsWith('.json')) return 'json'
+  if (path.endsWith('.html')) return 'html'
+  if (path.endsWith('.md')) return 'markdown'
+  if (path.endsWith('.py')) return 'python'
+  if (path.endsWith('.rs')) return 'rust'
+  if (path.endsWith('.c')) return 'c'
+  if (path.endsWith('.cpp') || path.endsWith('.cc') || path.endsWith('.cxx')) return 'cpp'
+  return 'plaintext'
+}
+
+function toFileSystemFromTree(treeMap) {
+  const root = {}
+  const nodes = Array.from(treeMap.values()).sort((a, b) => a.path.localeCompare(b.path))
+
+  for (const node of nodes) {
+    const parts = node.path.split('/').filter(Boolean)
+    if (parts.length === 0) {
+      continue
+    }
+
+    let cursor = root
+    for (let i = 0; i < parts.length; i += 1) {
+      const part = parts[i]
+      const isLeaf = i === parts.length - 1
+
+      if (!isLeaf) {
+        if (!cursor[part] || cursor[part].type !== 'folder') {
+          cursor[part] = { type: 'folder', files: {} }
+        }
+        cursor = cursor[part].files
+        continue
+      }
+
+      if (node.type === 'folder') {
+        if (!cursor[part] || cursor[part].type !== 'folder') {
+          cursor[part] = { type: 'folder', files: {} }
+        }
+      } else {
+        cursor[part] = {
+          type: 'file',
+          language: getLanguageFromPath(node.path),
+          content: '',
+        }
+      }
+    }
+  }
+
+  return root
+}
+
 export function EditorScreen() {
   const editorRef = useRef(null)
   const socketRef = useRef(null)
@@ -17,49 +88,17 @@ export function EditorScreen() {
   const isRemoteChangeRef = useRef(false)
   const remoteCursorsRef = useRef(new Map())
   const codeRef = useRef('')
-  const currentFilePathRef = useRef('src/App.jsx')
+  const currentFilePathRef = useRef('')
   const versionRef = useRef(0)
   const selectionDisposableRef = useRef(null)
   const runControllerRef = useRef(null)
   
-  // File system structure
-  const [fileSystem] = useState({
-    'src': {
-      type: 'folder',
-      files: {
-        'index.js': { type: 'file', language: 'javascript', content: '' },
-        'App.jsx': { type: 'file', language: 'javascript', content: '' },
-        'styles': {
-          type: 'folder',
-          files: {
-            'main.css': { type: 'file', language: 'css', content: '' },
-            'variables.css': { type: 'file', language: 'css', content: '' }
-          }
-        },
-        'components': {
-          type: 'folder',
-          files: {
-            'Header.jsx': { type: 'file', language: 'javascript', content: '' },
-            'Footer.jsx': { type: 'file', language: 'javascript', content: '' }
-          }
-        }
-      }
-    },
-    'public': {
-      type: 'folder',
-      files: {
-        'index.html': { type: 'file', language: 'html', content: '' }
-      }
-    },
-    'package.json': { type: 'file', language: 'json', content: '' },
-    'README.md': { type: 'file', language: 'markdown', content: '' }
-  })
+  const [treeNodes, setTreeNodes] = useState(() => new Map())
+  const fileSystem = toFileSystemFromTree(treeNodes)
 
-  const [openFiles, setOpenFiles] = useState([
-    { id: 1, name: 'App.jsx', path: 'src/App.jsx', language: 'javascript', active: true }
-  ])
+  const [openFiles, setOpenFiles] = useState([])
   
-  const [currentFile, setCurrentFile] = useState(openFiles[0])
+  const [currentFile, setCurrentFile] = useState(null)
   const [code, setCode] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [isTerminalOpen, setIsTerminalOpen] = useState(false)
@@ -86,6 +125,16 @@ export function EditorScreen() {
   useEffect(() => {
     currentFilePathRef.current = currentFile?.path || ''
   }, [currentFile])
+
+  useEffect(() => {
+    setTreeNodes(new Map())
+    setOpenFiles([])
+    setCurrentFile(null)
+    currentFilePathRef.current = ''
+    codeRef.current = ''
+    setCode('')
+    versionRef.current = 0
+  }, [currentRoomId])
 
   useEffect(() => {
     const rawAuthUser = localStorage.getItem('authUser')
@@ -177,6 +226,16 @@ export function EditorScreen() {
     setTerminalOutput((prev) => [...prev, { type, text }])
   }, [])
 
+  const requestTreeSync = useCallback(() => {
+    const socket = socketRef.current
+    const roomId = roomIdRef.current
+    if (!socket || !roomId) {
+      return
+    }
+
+    socket.emit('tree:sync', { roomId })
+  }, [])
+
   const requestRoomFileSync = useCallback(() => {
     const socket = socketRef.current
     const roomId = roomIdRef.current
@@ -211,6 +270,7 @@ export function EditorScreen() {
     socketRef.current = socket
 
     const emitRoomJoin = () => {
+      requestTreeSync()
       requestRoomFileSync()
     }
 
@@ -235,6 +295,101 @@ export function EditorScreen() {
         versionRef.current = 0
       }
       applyRemoteCodeUpdate(payload.content)
+    }
+
+    const handleTreeStateSync = (payload) => {
+      if (!payload || payload.roomId !== roomIdRef.current || !Array.isArray(payload.nodes)) {
+        return
+      }
+
+      const nextTree = toTreeMap(payload.nodes)
+      setTreeNodes(nextTree)
+
+      const filePaths = Array.from(nextTree.values())
+        .filter((node) => node.type === 'file')
+        .map((node) => node.path)
+      if (filePaths.length === 0) {
+        setOpenFiles([])
+        setCurrentFile(null)
+        currentFilePathRef.current = ''
+        codeRef.current = ''
+        setCode('')
+        versionRef.current = 0
+        return
+      }
+
+      const filePathSet = new Set(filePaths)
+      setOpenFiles((prev) =>
+        prev
+          .filter((file) => filePathSet.has(file.path))
+          .map((file) => ({
+            ...file,
+            id: file.path,
+            name: file.path.split('/').pop() || file.name,
+            language: getLanguageFromPath(file.path),
+          })),
+      )
+
+      if (!currentFilePathRef.current || !filePathSet.has(currentFilePathRef.current)) {
+        const nextPath = filePaths[0]
+        const nextFile = {
+          id: nextPath,
+          name: nextPath.split('/').pop() || nextPath,
+          path: nextPath,
+          language: getLanguageFromPath(nextPath),
+          active: true,
+        }
+        setCurrentFile(nextFile)
+        currentFilePathRef.current = nextPath
+        requestRoomFileSync()
+      }
+    }
+
+    const handleTreeNodeCreated = (payload) => {
+      if (!payload || payload.roomId !== roomIdRef.current || !payload.node || typeof payload.node.path !== 'string') {
+        return
+      }
+
+      setTreeNodes((prev) => {
+        const next = new Map(prev)
+        next.set(payload.node.path, {
+          path: payload.node.path,
+          name: payload.node.name,
+          type: payload.node.type,
+          parentPath: payload.node.parentPath ?? null,
+        })
+        return next
+      })
+
+      if (payload.node.type === 'file') {
+        const language = getLanguageFromPath(payload.node.path)
+        const newFile = {
+          id: payload.node.path,
+          name: payload.node.name,
+          path: payload.node.path,
+          language,
+          active: true,
+        }
+
+        setOpenFiles((prev) => {
+          if (prev.some((file) => file.path === newFile.path)) {
+            return prev
+          }
+          return [...prev, newFile]
+        })
+        setCurrentFile(newFile)
+        currentFilePathRef.current = newFile.path
+        requestRoomFileSync()
+      }
+    }
+
+    const handleSocketError = (payload) => {
+      if (!payload || typeof payload.message !== 'string' || typeof payload.event !== 'string') {
+        return
+      }
+
+      addTerminalOutput(`${payload.event}: ${payload.message}`, 'warning')
+      setIsTerminalOpen(true)
     }
 
     const handleEditorPatch = (payload) => {
@@ -284,6 +439,9 @@ export function EditorScreen() {
     }
 
     socket.on('room:state-sync', handleStateSync)
+    socket.on('tree:state-sync', handleTreeStateSync)
+    socket.on('tree:node-created', handleTreeNodeCreated)
+    socket.on('socket:error', handleSocketError)
     socket.on('editor:patch', handleEditorPatch)
     socket.on('terminal:output', handleTerminalOutput)
     socket.on('cursor:update', handleCursorUpdate)
@@ -296,13 +454,16 @@ export function EditorScreen() {
 
       socket.off('connect', emitRoomJoin)
       socket.off('room:state-sync', handleStateSync)
+      socket.off('tree:state-sync', handleTreeStateSync)
+      socket.off('tree:node-created', handleTreeNodeCreated)
+      socket.off('socket:error', handleSocketError)
       socket.off('editor:patch', handleEditorPatch)
       socket.off('terminal:output', handleTerminalOutput)
       socket.off('cursor:update', handleCursorUpdate)
       socket.disconnect()
       socketRef.current = null
     }
-  }, [addTerminalOutput, applyRemoteCodeUpdate, applyTextOperation, currentRoomId, requestRoomFileSync])
+  }, [addTerminalOutput, applyRemoteCodeUpdate, applyTextOperation, currentRoomId, requestRoomFileSync, requestTreeSync])
 
   const handleOpenFile = (name, path, language) => {
     // Check if file is already open
@@ -312,7 +473,7 @@ export function EditorScreen() {
     } else {
       // Add new file
       const newFile = {
-        id: Date.now(),
+        id: path,
         name,
         path,
         language,
@@ -326,15 +487,54 @@ export function EditorScreen() {
     requestRoomFileSync()
   }
 
+  const handleCreateNode = (nodeType) => {
+    const socket = socketRef.current
+    const roomId = roomIdRef.current
+    if (!socket || !roomId) {
+      addTerminalOutput('Create failed: connect to a room first.', 'warning')
+      return
+    }
+
+    const defaultName = nodeType === 'folder' ? 'new-folder' : 'new-file.js'
+    const name = window.prompt(`Enter ${nodeType} name:`, defaultName)
+    if (name === null) {
+      return
+    }
+
+    const trimmedName = name.trim()
+    if (!trimmedName) {
+      addTerminalOutput('Create failed: name is required.', 'warning')
+      return
+    }
+
+    const parentPath = window.prompt('Parent folder path (leave empty for root):', '')
+    if (parentPath === null) {
+      return
+    }
+
+    socket.emit('tree:create', {
+      roomId,
+      name: trimmedName,
+      nodeType,
+      parentPath: parentPath.trim() || null,
+    })
+  }
+
   const handleCloseFile = (fileId) => {
     setOpenFiles(prev => prev.filter(f => f.id !== fileId))
     
-    if (currentFile.id === fileId) {
+    if (currentFile?.id === fileId) {
       const remaining = openFiles.filter(f => f.id !== fileId)
       if (remaining.length > 0) {
         setCurrentFile(remaining[0])
+        currentFilePathRef.current = remaining[0].path
+        requestRoomFileSync()
       } else {
         setCurrentFile(null)
+        currentFilePathRef.current = ''
+        codeRef.current = ''
+        setCode('')
+        versionRef.current = 0
       }
     }
   }
@@ -521,6 +721,8 @@ export function EditorScreen() {
         onSelectFile={handleOpenFile}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+        onCreateFile={() => handleCreateNode('file')}
+        onCreateFolder={() => handleCreateNode('folder')}
       />
 
       {/* Main editor area */}
@@ -691,7 +893,7 @@ export function EditorScreen() {
                   onClick={() => setIsCopilotOpen(false)}
                   title="Close Copilot panel"
                 >
-                  ✕
+                  Γ£ò
                 </button>
               </div>
 

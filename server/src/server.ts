@@ -2,6 +2,7 @@ import http from 'node:http'
 import { Server } from 'socket.io'
 import { createApp } from './app'
 import { config } from './config'
+import { ensureRoomFileNodeTable } from './services/roomFileNodeRepository'
 import { registerCollaborationGateway } from './socket/collaborationGateway'
 import { ensureRoomFileVersionTable } from './services/roomFileVersionRepository'
 import { ensureCollaborationTables } from './services/roomRepository'
@@ -21,6 +22,7 @@ registerCollaborationGateway(io)
 async function bootstrap() {
   await ensureUsersTable()
   await ensureCollaborationTables()
+  await ensureRoomFileNodeTable()
   await ensureRoomFileVersionTable()
 
   server.listen(config.port, config.host, () => {
