@@ -114,6 +114,10 @@ function isSafeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value)
 }
 
+function isString(value: unknown): value is string {
+  return typeof value === 'string'
+}
+
 function emitGatewayError(
   socket: Socket,
   event: GatewayErrorPayload['event'],
@@ -179,7 +183,7 @@ function isEditorTextOperation(payload: unknown): payload is EditorTextOperation
   }
 
   if (payload.type === 'insert') {
-    return isNonEmptyString(payload.text)
+    return isString(payload.text)
   }
 
   if (payload.type === 'delete') {
@@ -297,7 +301,7 @@ function isAiDecisionPayload(payload: unknown): payload is AiDecisionPayload {
 
   if (payload.decidedAt !== undefined && !isNumber(payload.decidedAt)) {
     return false
-  }
+  } 
 
   return true
 }

@@ -1,14 +1,24 @@
-import { useState, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import { Sidebar } from './Sidebar'
 import { Toolbar } from './Toolbar'
 import { EditorTabs } from './EditorTabs'
 import { Terminal } from './Terminal'
 import { runCodeExecutor } from './runCodeExecutor'
+import { createCollabSocket } from '../services/socket'
 import '../style/Editor.css'
 
 export function EditorScreen() {
   const editorRef = useRef(null)
+  const socketRef = useRef(null)
+  const roomIdRef = useRef('main-room')
+  const userIdRef = useRef(`user-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`)
+  const isRemoteChangeRef = useRef(false)
+  const remoteCursorsRef = useRef(new Map())
+  const codeRef = useRef('')
+  const currentFilePathRef = useRef('src/App.jsx')
+  const versionRef = useRef(0)
+  const selectionDisposableRef = useRef(null)
   
   // File system structure
   const [fileSystem] = useState({
@@ -52,6 +62,180 @@ export function EditorScreen() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [isTerminalOpen, setIsTerminalOpen] = useState(false)
   const [terminalOutput, setTerminalOutput] = useState([])
+
+  useEffect(() => {
+    currentFilePathRef.current = currentFile?.path || ''
+  }, [currentFile])
+
+  const applyTextOperation = useCallback((content, operation) => {
+    if (!operation || typeof operation.pos !== 'number') {
+      return content
+    }
+
+    if (operation.type === 'insert' && typeof operation.text === 'string') {
+      return `${content.slice(0, operation.pos)}${operation.text}${content.slice(operation.pos)}`
+    }
+
+    if (operation.type === 'delete' && typeof operation.length === 'number') {
+      return `${content.slice(0, operation.pos)}${content.slice(operation.pos + operation.length)}`
+    }
+
+    return content
+  }, [])
+
+  const buildEditorOperations = useCallback((previousCode, nextCode) => {
+    if (previousCode === nextCode) {
+      return []
+    }
+
+    let prefixLength = 0
+    while (
+      prefixLength < previousCode.length &&
+      prefixLength < nextCode.length &&
+      previousCode[prefixLength] === nextCode[prefixLength]
+    ) {
+      prefixLength += 1
+    }
+
+    let previousSuffix = previousCode.length - 1
+    let nextSuffix = nextCode.length - 1
+    while (
+      previousSuffix >= prefixLength &&
+      nextSuffix >= prefixLength &&
+      previousCode[previousSuffix] === nextCode[nextSuffix]
+    ) {
+      previousSuffix -= 1
+      nextSuffix -= 1
+    }
+
+    const removedLength = Math.max(0, previousSuffix - prefixLength + 1)
+    const insertedText =
+      nextSuffix >= prefixLength ? nextCode.slice(prefixLength, nextSuffix + 1) : ''
+
+    const operations = []
+    if (removedLength > 0) {
+      operations.push({
+        type: 'delete',
+        pos: prefixLength,
+        length: removedLength,
+      })
+    }
+
+    if (insertedText.length > 0) {
+      operations.push({
+        type: 'insert',
+        pos: prefixLength,
+        text: insertedText,
+      })
+    }
+
+    return operations
+  }, [])
+
+  const addTerminalOutput = useCallback((text, type = 'info') => {
+    setTerminalOutput((prev) => [...prev, { type, text }])
+  }, [])
+
+  const applyRemoteCodeUpdate = useCallback((nextCode) => {
+    isRemoteChangeRef.current = true
+    codeRef.current = nextCode
+    setCode(nextCode)
+    setTimeout(() => {
+      isRemoteChangeRef.current = false
+    }, 0)
+  }, [])
+
+  useEffect(() => {
+    const socket = createCollabSocket(roomIdRef.current)
+    socketRef.current = socket
+
+    const emitRoomJoin = () => {
+      socket.emit('room:join', {
+        roomId: roomIdRef.current,
+        userId: userIdRef.current,
+      })
+    }
+
+    socket.on('connect', emitRoomJoin)
+    if (socket.connected) {
+      emitRoomJoin()
+    }
+
+    const handleStateSync = (payload) => {
+      if (!payload || payload.roomId !== roomIdRef.current || typeof payload.content !== 'string') {
+        return
+      }
+
+      const normalizedContent = payload.content.replace(/\r\n/g, '\n')
+      if (typeof payload.baseVersion === 'number') {
+        versionRef.current = payload.baseVersion
+      } else {
+        versionRef.current = 0
+      }
+      applyRemoteCodeUpdate(normalizedContent)
+    }
+
+    const handleEditorPatch = (payload) => {
+      if (!payload || payload.roomId !== roomIdRef.current || !payload.op) {
+        return
+      }
+
+      if (payload.userId === userIdRef.current) {
+        return
+      }
+
+      const currentCode = codeRef.current
+      const nextCode = applyTextOperation(currentCode, payload.op)
+      if (nextCode === currentCode) {
+        return
+      }
+
+      if (typeof payload.baseVersion === 'number') {
+        versionRef.current = payload.baseVersion + 1
+      } else {
+        versionRef.current += 1
+      }
+      codeRef.current = nextCode
+      applyRemoteCodeUpdate(nextCode)
+    }
+
+    const handleTerminalOutput = (payload) => {
+      if (!payload || payload.roomId !== roomIdRef.current || typeof payload.chunk !== 'string') {
+        return
+      }
+
+      setIsTerminalOpen(true)
+      addTerminalOutput(payload.chunk, payload.source === 'stderr' ? 'warning' : 'info')
+    }
+
+    const handleCursorUpdate = (payload) => {
+      if (!payload || payload.roomId !== roomIdRef.current || payload.userId === userIdRef.current) {
+        return
+      }
+
+      remoteCursorsRef.current.set(payload.userId, payload)
+    }
+
+    socket.on('room:state-sync', handleStateSync)
+    socket.on('editor:patch', handleEditorPatch)
+    socket.on('terminal:output', handleTerminalOutput)
+    socket.on('cursor:update', handleCursorUpdate)
+
+    return () => {
+      if (selectionDisposableRef.current) {
+        selectionDisposableRef.current.dispose()
+        selectionDisposableRef.current = null
+      }
+
+      socket.off('connect', emitRoomJoin)
+      socket.off('room:state-sync', handleStateSync)
+      socket.off('editor:patch', handleEditorPatch)
+      socket.off('terminal:output', handleTerminalOutput)
+      socket.off('cursor:update', handleCursorUpdate)
+      socket.disconnect()
+      socketRef.current = null
+    }
+  }, [addTerminalOutput, applyRemoteCodeUpdate, applyTextOperation])
 
   const handleOpenFile = (name, path, language) => {
     // Check if file is already open
@@ -113,12 +297,39 @@ export function EditorScreen() {
     addTerminalOutput('🤖 AI Assistant: Ready to help!', 'info')
   }
 
-  const addTerminalOutput = (text, type = 'info') => {
-    setTerminalOutput((prev) => [...prev, { type, text }])
-  }
-
   const handleEditorChange = (value) => {
-    setCode(value || '')
+    const nextCode = (value || '').replace(/\r\n/g, '\n')
+
+    if (isRemoteChangeRef.current) {
+      isRemoteChangeRef.current = false
+      codeRef.current = nextCode
+      setCode(nextCode)
+      return
+    }
+
+    const previousCode = codeRef.current
+    codeRef.current = nextCode
+    setCode(nextCode)
+
+    const socket = socketRef.current
+    if (!socket || !currentFilePathRef.current) {
+      return
+    }
+
+    const operations = buildEditorOperations(previousCode, nextCode)
+    operations.forEach((op, index) => {
+      const payload = {
+        roomId: roomIdRef.current,
+        docId: currentFilePathRef.current,
+        userId: userIdRef.current,
+        baseVersion: versionRef.current,
+        opId: `${userIdRef.current}-${Date.now()}-${index}`,
+        op,
+      }
+
+      socket.emit('editor:change', payload)
+      versionRef.current += 1
+    })
   }
 
   return (
@@ -160,12 +371,40 @@ export function EditorScreen() {
                 onChange={handleEditorChange}
                 onMount={(editor) => {
                   editorRef.current = editor
+                  if (selectionDisposableRef.current) {
+                    selectionDisposableRef.current.dispose()
+                  }
+
+                  selectionDisposableRef.current = editor.onDidChangeCursorSelection((event) => {
+                    const socket = socketRef.current
+                    if (!socket || !currentFilePathRef.current) {
+                      return
+                    }
+
+                    const position = event.selection?.getPosition()
+                    if (!position) {
+                      return
+                    }
+
+                    socket.emit('cursor:move', {
+                      roomId: roomIdRef.current,
+                      userId: userIdRef.current,
+                      docId: currentFilePathRef.current,
+                      line: position.lineNumber,
+                      column: position.column,
+                      selectionStart: editor.getModel()?.getOffsetAt(event.selection.getStartPosition()),
+                      selectionEnd: editor.getModel()?.getOffsetAt(event.selection.getEndPosition()),
+                      timestamp: Date.now(),
+                    })
+                  })
                 }}
                 theme="vs-dark"
                 options={{
                   minimap: { enabled: true },
                   fontSize: 14,
                   fontFamily: '"Consolas", "Monaco", "Courier New", monospace',
+                  eol: '\n',
+                  trimAutoWhitespace: false,
                   lineNumbers: 'on',
                   scrollBeyondLastLine: false,
                   automaticLayout: true,
