@@ -2,13 +2,17 @@ import dotenv from 'dotenv'
 
 dotenv.config()
 
-function parsePort(value: string | undefined, fallback: number): number {
+function parsePositiveInt(value: string | undefined, fallback: number, label: string): number {
   if (!value) return fallback
   const parsed = Number(value)
   if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`Invalid port value: ${value}`)
+    throw new Error(`Invalid ${label} value: ${value}`)
   }
   return parsed
+}
+
+function parsePort(value: string | undefined, fallback: number): number {
+  return parsePositiveInt(value, fallback, 'port')
 }
 
 function parseCorsOrigins(value: string | undefined): string[] {
@@ -38,5 +42,11 @@ export const config = {
   auth: {
     jwtSecret: process.env.JWT_SECRET ?? 'change-me-in-production',
     jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '1h',
+  },
+  deepseek: {
+    baseUrl: process.env.DEEPSEEK_API_BASE_URL ?? 'https://api.deepseek.com/v1',
+    apiKey: process.env.DEEPSEEK_API_KEY ?? '',
+    model: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
+    timeoutMs: parsePositiveInt(process.env.DEEPSEEK_TIMEOUT_MS, 30000, 'deepseek timeout'),
   },
 }

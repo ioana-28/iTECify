@@ -376,9 +376,41 @@ export function EditorScreen() {
     }
   }
 
-  const handleAddAI = () => {
-    setIsTerminalOpen(true)
-    addTerminalOutput('🤖 AI Assistant: Ready to help!', 'info')
+  const handleAddAI = async () => {
+    const instruction = window.prompt('Describe what changes you want in the current file:')
+    if (instruction === null) {
+      return
+    }
+
+    const trimmedInstruction = instruction.trim()
+    if (!trimmedInstruction) {
+      setIsTerminalOpen(true)
+      addTerminalOutput('AI edit cancelled: instruction is required.', 'warning')
+      return
+    }
+
+    if (!currentFile) {
+      setIsTerminalOpen(true)
+      addTerminalOutput('AI edit failed: no file is currently open.', 'error')
+      return
+    }
+
+    try {
+      setIsTerminalOpen(true)
+      addTerminalOutput('Sending AI edit request...', 'info')
+
+      const response = await apiClient.editFileWithAi({
+        content: codeRef.current,
+        instruction: trimmedInstruction,
+        language: currentFile.language || 'javascript',
+      })
+
+      applyRemoteCodeUpdate(response.content)
+      addTerminalOutput('AI edit applied successfully.', 'success')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'AI edit failed'
+      addTerminalOutput(`AI edit failed: ${message}`, 'error')
+    }
   }
 
   const handleCreateRoom = async () => {

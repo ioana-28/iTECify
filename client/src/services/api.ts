@@ -61,6 +61,16 @@ export type ExecutionEvent = {
   exitCode?: number
 }
 
+export type EditFileWithAiPayload = {
+  content: string
+  instruction: string
+  language: string
+}
+
+export type EditFileWithAiResponse = {
+  content: string
+}
+
 function getAuthToken(): string | null {
   if (typeof window === 'undefined') {
     return null
@@ -154,6 +164,13 @@ async function listRooms(): Promise<{ rooms: Room[] }> {
   return requestJson<{ rooms: Room[] }>('/api/rooms')
 }
 
+async function editFileWithAi(payload: EditFileWithAiPayload): Promise<EditFileWithAiResponse> {
+  return requestJson<EditFileWithAiResponse>('/api/ai/edit-file', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
 function streamExecution(sessionId: string): EventSource {
   return new EventSource(`${config.apiBaseUrl}/api/execute/${sessionId}/stream`)
 }
@@ -167,5 +184,6 @@ export const apiClient = {
   createRoom,
   joinRoom,
   listRooms,
+  editFileWithAi,
   streamExecution,
 }
