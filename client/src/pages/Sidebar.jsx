@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { getLanguageFromPath } from '../services/language'
 import '../style/Sidebar.css'
 
 export const Sidebar = ({
@@ -72,7 +73,8 @@ export const Sidebar = ({
         title="New file"
         aria-label="New file"
       >
-        <span className="action-glyph file-glyph" aria-hidden="true" />
+        <span className="sidebar-action-icon" aria-hidden="true">📄</span>
+        <span className="sidebar-action-plus" aria-hidden="true">+</span>
       </button>
       <button
         className="node-action-btn folder-action"
@@ -83,7 +85,8 @@ export const Sidebar = ({
         title="New folder"
         aria-label="New folder"
       >
-        <span className="action-glyph folder-glyph" aria-hidden="true" />
+        <span className="sidebar-action-icon" aria-hidden="true">📁</span>
+        <span className="sidebar-action-plus" aria-hidden="true">+</span>
       </button>
     </div>
   )
@@ -122,20 +125,11 @@ export const Sidebar = ({
           return '📄'
         }
 
-        const getLanguage = (fileName) => {
-          if (fileName.endsWith('.js') || fileName.endsWith('.jsx')) return 'javascript'
-          if (fileName.endsWith('.css')) return 'css'
-          if (fileName.endsWith('.json')) return 'json'
-          if (fileName.endsWith('.html')) return 'html'
-          if (fileName.endsWith('.md')) return 'markdown'
-          return 'plaintext'
-        }
-
         return (
           <div
             key={fullPath}
             className="file-item"
-            onClick={() => onSelectFile(name, fullPath, getLanguage(name))}
+            onClick={() => onSelectFile(name, fullPath, getLanguageFromPath(fullPath))}
           >
             <span className="file-icon">{getFileIcon(name)}</span>
             <span className="file-name">{name}</span>

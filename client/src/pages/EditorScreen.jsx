@@ -6,6 +6,7 @@ import { EditorTabs } from './EditorTabs'
 import { Terminal } from './Terminal'
 import { runCodeExecutor } from './runCodeExecutor'
 import { createCollabSocket } from '../services/socket'
+import { getLanguageFromPath } from '../services/language'
 import { apiClient } from '../services/api'
 import '../style/Editor.css'
 
@@ -25,19 +26,6 @@ function toTreeMap(nodes) {
   })
 
   return map
-}
-
-function getLanguageFromPath(path) {
-  if (path.endsWith('.js') || path.endsWith('.jsx')) return 'javascript'
-  if (path.endsWith('.css')) return 'css'
-  if (path.endsWith('.json')) return 'json'
-  if (path.endsWith('.html')) return 'html'
-  if (path.endsWith('.md')) return 'markdown'
-  if (path.endsWith('.py')) return 'python'
-  if (path.endsWith('.rs')) return 'rust'
-  if (path.endsWith('.c')) return 'c'
-  if (path.endsWith('.cpp') || path.endsWith('.cc') || path.endsWith('.cxx')) return 'cpp'
-  return 'plaintext'
 }
 
 function toFileSystemFromTree(treeMap) {
