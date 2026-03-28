@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import '../style/Terminal.css'
 
-export const Terminal = ({ output, isOpen, onClose }) => {
+export const Terminal = ({ output, isOpen, onClose, height, isResizing, onResizeStart }) => {
   const terminalContentRef = useRef(null)
 
   useEffect(() => {
@@ -14,7 +14,18 @@ export const Terminal = ({ output, isOpen, onClose }) => {
   if (!isOpen) return null
 
   return (
-    <div className="terminal-panel">
+    <div
+      className={`terminal-panel ${isResizing ? 'resizing' : ''}`}
+      style={typeof height === 'number' ? { height: `${height}px` } : undefined}
+    >
+      <button
+        className="terminal-resize-handle"
+        onMouseDown={onResizeStart}
+        title="Resize terminal"
+        aria-label="Resize terminal"
+      >
+        <span className="terminal-resize-grip" aria-hidden="true" />
+      </button>
       <div className="terminal-header">
         <div className="terminal-title">
           <span className="terminal-icon">▶</span>

@@ -49,4 +49,7 @@ export const config = {
     model: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
     timeoutMs: parsePositiveInt(process.env.DEEPSEEK_TIMEOUT_MS, 30000, 'deepseek timeout'),
   },
+  execution: {
+    timeoutMs: parsePositiveInt(process.env.EXECUTION_TIMEOUT_MS, 10000, 'execution timeout'),
+  },
 }

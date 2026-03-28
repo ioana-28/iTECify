@@ -3,10 +3,10 @@ import '../style/Toolbar.css'
 
 export const Toolbar = ({
   onRun,
-  onRunStep,
   onStop,
   onAiUpdate: _onAiUpdate,
-  onToggleSidebar,
+  isTerminalOpen,
+  onToggleTerminal,
   isCopilotOpen,
   onToggleCopilot,
 }) => {
@@ -20,19 +20,8 @@ export const Toolbar = ({
   return (
     <div className="toolbar">
       <div className="toolbar-left">
-        <button 
-          className="hamburger-btn" 
-          onClick={onToggleSidebar}
-          title="Toggle sidebar (Ctrl+B)"
-        >
-          ☰
-        </button>
-        <span className="separator"></span>
         <button className="toolbar-btn run" onClick={onRun} title="Run (F5)">
           ▶ Run
-        </button>
-        <button className="toolbar-btn step" onClick={onRunStep} title="Step Run (F6)">
-          ⏭ Step
         </button>
         <button
           className="toolbar-btn stop"
@@ -40,6 +29,13 @@ export const Toolbar = ({
           title="Stop (Shift+F5)"
         >
           ⏹ Stop
+        </button>
+        <button
+          className={`toolbar-btn terminal ${isTerminalOpen ? 'active' : ''}`}
+          onClick={onToggleTerminal}
+          title="Toggle terminal"
+        >
+          {isTerminalOpen ? 'Terminal: ON' : 'Terminal: OFF'}
         </button>
       </div>
 
