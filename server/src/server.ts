@@ -10,10 +10,10 @@ const server = http.createServer(app)
 
 const io = new Server(server, {
   cors: {
-    origin: config.corsOrigins,
+    origin: "*", // Am schimbat config.corsOrigins cu "*"
+    methods: ["GET", "POST"]
   },
 })
-
 registerCollaborationGateway(io)
 
 async function bootstrap() {
