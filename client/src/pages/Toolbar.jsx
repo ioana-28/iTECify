@@ -6,7 +6,7 @@ export const Toolbar = ({
   onRunStep,
   onStop,
   onAiUpdate: _onAiUpdate,
-  onToggleSidebar,
+  onToggleSidebar: _onToggleSidebar,
   isCopilotOpen,
   onToggleCopilot,
 }) => {
@@ -20,14 +20,6 @@ export const Toolbar = ({
   return (
     <div className="toolbar">
       <div className="toolbar-left">
-        <button 
-          className="hamburger-btn" 
-          onClick={onToggleSidebar}
-          title="Toggle sidebar (Ctrl+B)"
-        >
-          ☰
-        </button>
-        <span className="separator"></span>
         <button className="toolbar-btn run" onClick={onRun} title="Run (F5)">
           ▶ Run
         </button>

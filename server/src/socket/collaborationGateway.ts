@@ -746,9 +746,25 @@ export function registerCollaborationGateway(io: Server): void {
         }
 
         const currentState = await getOrLoadRoomFileState(payload.roomId, payload.docId)
+
+        if (payload.baseVersion !== currentState.version) {
+          socket.emit('room:state-sync', {
+            roomId: payload.roomId,
+            filePath: payload.docId,
+            content: currentState.content,
+            baseVersion: currentState.version,
+          })
+          return
+        }
+
         const updatedState = applyEditorOperation(currentState.content, payload.op)
         if (!updatedState.ok) {
-          emitGatewayError(socket, 'editor:change', 'INVALID_OPERATION', updatedState.message)
+          socket.emit('room:state-sync', {
+            roomId: payload.roomId,
+            filePath: payload.docId,
+            content: currentState.content,
+            baseVersion: currentState.version,
+          })
           return
         }
 
