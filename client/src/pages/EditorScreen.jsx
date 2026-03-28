@@ -19,6 +19,7 @@ export function EditorScreen() {
   const currentFilePathRef = useRef('src/App.jsx')
   const versionRef = useRef(0)
   const selectionDisposableRef = useRef(null)
+  const runControllerRef = useRef(null)
   
   // File system structure
   const [fileSystem] = useState({
@@ -62,6 +63,7 @@ export function EditorScreen() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [isTerminalOpen, setIsTerminalOpen] = useState(false)
   const [terminalOutput, setTerminalOutput] = useState([])
+  const [isRunning, setIsRunning] = useState(false)
 
   useEffect(() => {
     currentFilePathRef.current = currentFile?.path || ''
@@ -166,13 +168,12 @@ export function EditorScreen() {
         return
       }
 
-      const normalizedContent = payload.content.replace(/\r\n/g, '\n')
       if (typeof payload.baseVersion === 'number') {
         versionRef.current = payload.baseVersion
       } else {
         versionRef.current = 0
       }
-      applyRemoteCodeUpdate(normalizedContent)
+      applyRemoteCodeUpdate(payload.content)
     }
 
     const handleEditorPatch = (payload) => {
@@ -269,27 +270,67 @@ export function EditorScreen() {
     }
   }
 
-  const handleRun = async () => {
+  const startRun = async (mode = 'run') => {
+    if (isRunning) {
+      addTerminalOutput('Execution already running. Stop first to run again.', 'warning')
+      return
+    }
+
     try {
+      setIsRunning(true)
       setTerminalOutput([])
-      await runCodeExecutor({
+      const controller = await runCodeExecutor({
         language: currentFile?.language,
         source: code,
+        mode,
+        onComplete: () => {
+          setIsRunning(false)
+          runControllerRef.current = null
+        },
         setTerminalOpen: setIsTerminalOpen,
         addTerminalOutput,
       })
+      runControllerRef.current = controller
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown run error'
       setIsTerminalOpen(true)
       addTerminalOutput(`Execution failed: ${message}`, 'error')
+      setIsRunning(false)
+      runControllerRef.current = null
     }
   }
 
-  const handleStop = () => {
-    addTerminalOutput('$ npm stop', 'info')
-    setTimeout(() => {
-      addTerminalOutput('Server stopped', 'warning')
-    }, 300)
+  const handleRun = async () => {
+    await startRun('run')
+  }
+
+  const handleRunStep = async () => {
+    const controller = runControllerRef.current
+    if (controller?.isStepMode) {
+      controller.step()
+      addTerminalOutput('Step advanced.', 'info')
+      return
+    }
+
+    await startRun('step')
+  }
+
+  const handleStop = async () => {
+    const controller = runControllerRef.current
+    if (!controller) {
+      addTerminalOutput('No running execution session to stop.', 'warning')
+      return
+    }
+
+    try {
+      await controller.stop()
+      addTerminalOutput('Stopping execution...', 'warning')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to stop execution'
+      addTerminalOutput(message, 'error')
+      setIsRunning(false)
+      runControllerRef.current = null
+    }
   }
 
   const handleAddAI = () => {
@@ -298,16 +339,22 @@ export function EditorScreen() {
   }
 
   const handleEditorChange = (value) => {
-    const nextCode = (value || '').replace(/\r\n/g, '\n')
+    const nextCode = value || ''
 
     if (isRemoteChangeRef.current) {
       isRemoteChangeRef.current = false
+      if (codeRef.current === nextCode) {
+        return
+      }
       codeRef.current = nextCode
       setCode(nextCode)
       return
     }
 
     const previousCode = codeRef.current
+    if (previousCode === nextCode) {
+      return
+    }
     codeRef.current = nextCode
     setCode(nextCode)
 
@@ -347,6 +394,7 @@ export function EditorScreen() {
         {/* Toolbar */}
         <Toolbar 
           onRun={handleRun} 
+          onRunStep={handleRunStep}
           onStop={handleStop} 
           onAddAI={handleAddAI}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
@@ -411,11 +459,15 @@ export function EditorScreen() {
                   tabSize: 2,
                   wordWrap: 'on',
                   formatOnPaste: true,
-                  formatOnType: true,
+                  formatOnType: false,
                   renderWhitespace: 'none',
                   cursorBlinking: 'blink',
                   smoothScrolling: true,
                   bracketPairColorization: true,
+                  autoClosingBrackets: 'beforeWhitespace',
+                  autoClosingQuotes: 'beforeWhitespace',
+                  autoSurround: 'languageDefined',
+                  linkedEditing: true,
                 }}
               />
             </div>

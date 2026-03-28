@@ -29,6 +29,7 @@ executionRoute.post('/execute', (req, res, next) => {
       language: body.language,
       source: body.source,
       stdin: body.stdin,
+      stepMode: Boolean(body.stepMode),
     })
 
     const response: StartExecutionResponse = { sessionId }
@@ -36,6 +37,28 @@ executionRoute.post('/execute', (req, res, next) => {
   } catch (error) {
     next(error)
   }
+})
+
+executionRoute.post('/execute/:sessionId/stop', (req, res) => {
+  const { sessionId } = req.params
+  const state = executionSessionStore.getState(sessionId)
+  if (!state) {
+    res.status(404).json({ error: 'Execution session not found' })
+    return
+  }
+
+  if (state.isCompleted) {
+    res.status(409).json({ error: 'Execution already completed' })
+    return
+  }
+
+  const stopped = executionService.stopExecution(sessionId)
+  if (!stopped) {
+    res.status(409).json({ error: 'Execution is not running' })
+    return
+  }
+
+  res.status(202).json({ sessionId, status: 'stopping' })
 })
 
 executionRoute.get('/execute/:sessionId/stream', (req, res) => {

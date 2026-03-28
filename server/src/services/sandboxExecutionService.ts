@@ -21,6 +21,8 @@ function emit(sessionId: string, event: Omit<ExecutionSessionEvent, 'timestamp'>
 }
 
 export class SandboxExecutionService {
+  private readonly activeContainers = new Map<string, Docker.Container>()
+
   startExecution(request: RunCodeRequest): string {
     const sessionId = randomUUID()
     executionSessionStore.createSession(sessionId)
@@ -30,6 +32,26 @@ export class SandboxExecutionService {
       executionSessionStore.completeSession(sessionId)
     })
     return sessionId
+  }
+
+  stopExecution(sessionId: string): boolean {
+    const container = this.activeContainers.get(sessionId)
+    if (!container) {
+      return false
+    }
+
+    this.activeContainers.delete(sessionId)
+
+    container
+      .kill()
+      .catch(() => undefined)
+      .finally(() => {
+        emit(sessionId, { type: 'status', message: 'Execution stopped by user.' })
+        emit(sessionId, { type: 'complete', message: 'Execution stopped.', exitCode: 130 })
+        executionSessionStore.completeSession(sessionId)
+      })
+
+    return true
   }
 
   private async executeAsync(sessionId: string, request: RunCodeRequest): Promise<void> {
@@ -54,6 +76,16 @@ export class SandboxExecutionService {
       await this.ensureImage(spec.image)
 
       emit(sessionId, { type: 'status', message: `Creating isolated ${request.language} container...` })
+      if (request.stepMode) {
+        emit(
+          sessionId,
+          {
+            type: 'status',
+            message:
+              'Step mode is currently simulated per output event; using protected timed execution in sandbox.',
+          },
+        )
+      }
       container = await docker.createContainer({
         Image: spec.image,
         Cmd: ['sh', '-lc', `${spec.executionScript} < /workspace/stdin.txt`],
@@ -71,15 +103,21 @@ export class SandboxExecutionService {
 
       emit(sessionId, { type: 'status', message: 'Starting container...' })
       await container.start()
+      this.activeContainers.set(sessionId, container)
+
+      // Stream logs in real-time
+      const logsPromise = container.logs({
+        stdout: true,
+        stderr: true,
+        follow: true,
+        timestamps: false,
+      })
 
       const waitResult = await this.waitWithTimeout(container, EXECUTION_TIMEOUT_MS)
-      const logs = await this.collectLogs(container)
-      for (const line of logs.stdoutLines) {
-        emit(sessionId, { type: 'stdout', message: line })
-      }
-      for (const line of logs.stderrLines) {
-        emit(sessionId, { type: 'stderr', message: line })
-      }
+      const logs = await logsPromise
+
+      // Process logs in real-time
+      await this.streamLogs(sessionId, logs)
 
       emit(sessionId, {
         type: 'complete',
@@ -88,6 +126,7 @@ export class SandboxExecutionService {
       })
       executionSessionStore.completeSession(sessionId)
     } finally {
+      this.activeContainers.delete(sessionId)
       if (container) {
         emit(sessionId, { type: 'status', message: 'Cleaning up container...' })
         try {
@@ -162,6 +201,59 @@ export class SandboxExecutionService {
       stdoutLines: splitLines(Buffer.concat(stdoutChunks)),
       stderrLines: splitLines(Buffer.concat(stderrChunks)),
     }
+  }
+
+  private async streamLogs(sessionId: string, logs: NodeJS.ReadableStream): Promise<void> {
+    return new Promise((resolve) => {
+      const stdoutBuffer: Buffer[] = []
+      const stderrBuffer: Buffer[] = []
+      let lastStdoutLength = 0
+      let lastStderrLength = 0
+
+      logs.on('data', (chunk: Buffer) => {
+        // Docker logs use 8-byte headers: [streamType(1), reserved(3), length(4)]
+        while (chunk.length >= 8) {
+          const streamType = chunk.readUInt8(0)
+          const frameSize = chunk.readUInt32BE(4)
+          
+          if (chunk.length < 8 + frameSize) break
+          
+          const payload = chunk.subarray(8, 8 + frameSize)
+          
+          if (streamType === 1) {
+            stdoutBuffer.push(payload)
+            const newStdout = Buffer.concat(stdoutBuffer).toString('utf8')
+            const newLines = newStdout.slice(lastStdoutLength).split(/\r?\n/)
+            for (const line of newLines) {
+              if (line.trim().length > 0) {
+                emit(sessionId, { type: 'stdout', message: line })
+              }
+            }
+            lastStdoutLength = newStdout.length
+          } else if (streamType === 2) {
+            stderrBuffer.push(payload)
+            const newStderr = Buffer.concat(stderrBuffer).toString('utf8')
+            const newLines = newStderr.slice(lastStderrLength).split(/\r?\n/)
+            for (const line of newLines) {
+              if (line.trim().length > 0) {
+                emit(sessionId, { type: 'stderr', message: line })
+              }
+            }
+            lastStderrLength = newStderr.length
+          }
+          
+          chunk = chunk.subarray(8 + frameSize)
+        }
+      })
+
+      logs.on('end', () => {
+        resolve()
+      })
+
+      logs.on('error', () => {
+        resolve()
+      })
+    })
   }
 
   private async waitWithTimeout(

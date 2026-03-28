@@ -39,6 +39,7 @@ export type ExecutePayload = {
   language: RunLanguage
   source: string
   stdin?: string
+  stepMode?: boolean
 }
 
 export type StartExecutionResponse = {
@@ -110,6 +111,12 @@ async function startExecution(payload: ExecutePayload): Promise<StartExecutionRe
   })
 }
 
+async function stopExecution(sessionId: string): Promise<{ sessionId: string; status: string }> {
+  return requestJson<{ sessionId: string; status: string }>(`/api/execute/${sessionId}/stop`, {
+    method: 'POST',
+  })
+}
+
 function streamExecution(sessionId: string): EventSource {
   return new EventSource(`${config.apiBaseUrl}/api/execute/${sessionId}/stream`)
 }
@@ -119,5 +126,6 @@ export const apiClient = {
   login,
   register,
   startExecution,
+  stopExecution,
   streamExecution,
 }

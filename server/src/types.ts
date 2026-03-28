@@ -4,6 +4,7 @@ export type RunCodeRequest = {
   language: RunLanguage
   source: string
   stdin?: string
+  stepMode?: boolean
 }
 
 export type RunCodeResult = {
