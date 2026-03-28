@@ -90,10 +90,12 @@ export class SandboxExecutionService {
         Image: spec.image,
         Cmd: ['sh', '-lc', `${spec.executionScript} < /workspace/stdin.txt`],
         WorkingDir: '/workspace',
+        NetworkDisabled: true,
         HostConfig: {
           AutoRemove: false,
-          Memory: 256 * 1024 * 1024,
-          NanoCpus: 1_000_000_000,
+          Memory: 128 * 1024 * 1024,
+          NanoCpus: 500_000_000,
+          PidsLimit: 20,
           NetworkMode: 'none',
         },
       })

@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar'
 import { Toolbar } from './Toolbar'
 import { EditorTabs } from './EditorTabs'
 import { Terminal } from './Terminal'
+import { SecurityPopup } from './SecurityPopup'
 import { runCodeExecutor } from './runCodeExecutor'
 import { createCollabSocket } from '../services/socket'
 import { apiClient } from '../services/api'
@@ -113,6 +114,9 @@ export function EditorScreen() {
   const [roomError, setRoomError] = useState('')
   const [isRoomBusy, setIsRoomBusy] = useState(false)
   const [isCopilotOpen, setIsCopilotOpen] = useState(false)
+  const [isSecurityPopupOpen, setIsSecurityPopupOpen] = useState(false)
+  const [securityPopupMessage, setSecurityPopupMessage] = useState('')
+  const [securityPopupType, setSecurityPopupType] = useState('')
   const [copilotDraft, setCopilotDraft] = useState('')
   const [isCopilotBusy, setIsCopilotBusy] = useState(false)
   const [copilotMessages, setCopilotMessages] = useState([
@@ -476,6 +480,16 @@ export function EditorScreen() {
       remoteCursorsRef.current.set(payload.userId, payload)
     }
 
+    const handleChaosDetected = (payload) => {
+      if (!payload || typeof payload.message !== 'string') {
+        return
+      }
+
+      setSecurityPopupMessage(payload.message)
+      setSecurityPopupType(typeof payload.type === 'string' ? payload.type : '')
+      setIsSecurityPopupOpen(true)
+    }
+
     socket.on('room:state-sync', handleStateSync)
     socket.on('tree:state-sync', handleTreeStateSync)
     socket.on('tree:node-created', handleTreeNodeCreated)
@@ -483,6 +497,7 @@ export function EditorScreen() {
     socket.on('editor:patch', handleEditorPatch)
     socket.on('terminal:output', handleTerminalOutput)
     socket.on('cursor:update', handleCursorUpdate)
+    socket.on('security:chaos_detected', handleChaosDetected)
 
     return () => {
       if (selectionDisposableRef.current) {
@@ -498,6 +513,7 @@ export function EditorScreen() {
       socket.off('editor:patch', handleEditorPatch)
       socket.off('terminal:output', handleTerminalOutput)
       socket.off('cursor:update', handleCursorUpdate)
+      socket.off('security:chaos_detected', handleChaosDetected)
       socket.disconnect()
       socketRef.current = null
     }
@@ -586,6 +602,17 @@ export function EditorScreen() {
     try {
       setIsRunning(true)
       setTerminalOutput([])
+      const socket = socketRef.current
+      if (socket && roomIdRef.current && currentFilePathRef.current) {
+        socket.emit('code:execute', {
+          roomId: roomIdRef.current,
+          userId: userIdRef.current,
+          language: currentFile?.language === 'javascript' ? 'node' : currentFile?.language || 'node',
+          source: code,
+          stdin: '',
+          stepMode: mode === 'step',
+        })
+      }
       const controller = await runCodeExecutor({
         language: currentFile?.language,
         source: code,
@@ -787,6 +814,13 @@ export function EditorScreen() {
 
   return (
     <div className="editor-screen">
+      <SecurityPopup
+        open={isSecurityPopupOpen}
+        message={securityPopupMessage}
+        attackType={securityPopupType}
+        onClose={() => setIsSecurityPopupOpen(false)}
+      />
+
       {/* Sidebar - File Explorer */}
       <Sidebar 
         fileSystem={fileSystem}
