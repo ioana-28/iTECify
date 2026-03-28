@@ -12,6 +12,8 @@ import '../style/Editor.css'
 export function EditorScreen() {
   const editorRef = useRef(null)
   const socketRef = useRef(null)
+  const copilotInputRef = useRef(null)
+  const copilotMessagesEndRef = useRef(null)
   const roomIdRef = useRef('')
   const userIdRef = useRef(`user-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`)
   const isRemoteChangeRef = useRef(false)
@@ -72,6 +74,15 @@ export function EditorScreen() {
   const [roomError, setRoomError] = useState('')
   const [isRoomBusy, setIsRoomBusy] = useState(false)
   const [isCopilotOpen, setIsCopilotOpen] = useState(false)
+  const [copilotInput, setCopilotInput] = useState('')
+  const [isAiBusy, setIsAiBusy] = useState(false)
+  const [copilotMessages, setCopilotMessages] = useState([
+    {
+      id: `assistant-${Date.now()}`,
+      role: 'assistant',
+      text: 'Hi! Tell me what edits you want in the current file.',
+    },
+  ])
 
   const currentRoom = rooms.find((room) => room.id === currentRoomId) || null
 
@@ -107,6 +118,22 @@ export function EditorScreen() {
       setRoomError(message)
     })
   }, [loadRooms])
+
+  useEffect(() => {
+    if (!isCopilotOpen) {
+      return
+    }
+
+    const timer = setTimeout(() => {
+      copilotInputRef.current?.focus()
+    }, 0)
+
+    return () => clearTimeout(timer)
+  }, [isCopilotOpen])
+
+  useEffect(() => {
+    copilotMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [copilotMessages, isAiBusy])
 
   const applyTextOperation = useCallback((content, operation) => {
     if (!operation || typeof operation.pos !== 'number') {
@@ -377,41 +404,94 @@ export function EditorScreen() {
     }
   }
 
-  const handleAddAI = async () => {
-    const instruction = window.prompt('Describe what changes you want in the current file:')
-    if (instruction === null) {
-      return
-    }
-
+  const handleAiAction = async (instruction) => {
     const trimmedInstruction = instruction.trim()
     if (!trimmedInstruction) {
       setIsTerminalOpen(true)
       addTerminalOutput('AI edit cancelled: instruction is required.', 'warning')
+      setCopilotMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          role: 'assistant',
+          text: 'Please provide a request before sending.',
+        },
+      ])
       return
     }
 
     if (!currentFile) {
       setIsTerminalOpen(true)
       addTerminalOutput('AI edit failed: no file is currently open.', 'error')
+      setCopilotMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          role: 'assistant',
+          text: 'AI edit failed: no file is currently open.',
+        },
+      ])
       return
     }
 
     try {
+      setIsAiBusy(true)
       setIsTerminalOpen(true)
       addTerminalOutput('Sending AI edit request...', 'info')
+      const previousContent = codeRef.current
 
       const response = await apiClient.editFileWithAi({
-        content: codeRef.current,
+        content: previousContent,
         instruction: trimmedInstruction,
         language: currentFile.language || 'javascript',
       })
 
       applyRemoteCodeUpdate(response.content)
       addTerminalOutput('AI edit applied successfully.', 'success')
+      setCopilotMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          role: 'assistant',
+          text:
+            response.content !== previousContent
+              ? `Applied your request to ${currentFile.name}.`
+              : `No changes were needed for ${currentFile.name}.`,
+        },
+      ])
     } catch (error) {
       const message = error instanceof Error ? error.message : 'AI edit failed'
       addTerminalOutput(`AI edit failed: ${message}`, 'error')
+      setCopilotMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          role: 'assistant',
+          text: `AI edit failed: ${message}`,
+        },
+      ])
+    } finally {
+      setIsAiBusy(false)
     }
+  }
+
+  const handleCopilotSubmit = async () => {
+    const userPrompt = copilotInput.trim()
+    if (!userPrompt || isAiBusy) {
+      return
+    }
+
+    setCopilotInput('')
+    setCopilotMessages((prev) => [
+      ...prev,
+      {
+        id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        role: 'user',
+        text: userPrompt,
+      },
+    ])
+
+    await handleAiAction(userPrompt)
   }
 
   const handleCreateRoom = async () => {
@@ -501,11 +581,10 @@ export function EditorScreen() {
       {/* Main editor area */}
       <div className="editor-main">
         {/* Toolbar */}
-        <Toolbar 
-          onRun={handleRun} 
+        <Toolbar
+          onRun={handleRun}
           onRunStep={handleRunStep}
-          onStop={handleStop} 
-          onAddAI={handleAddAI}
+          onStop={handleStop}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           isCopilotOpen={isCopilotOpen}
           onToggleCopilot={() => setIsCopilotOpen((prev) => !prev)}
@@ -667,38 +746,37 @@ export function EditorScreen() {
               </div>
 
               <div className="copilot-body">
-                <div className="copilot-suggestion-card">
-                  <h4>Quick suggestion</h4>
-                  <p>Improve your runtime logs and include context metadata for easier debugging.</p>
-                  <button className="copilot-primary-action">Generate better logging</button>
-                </div>
-
-                <div className="copilot-suggestion-card">
-                  <h4>Assistant note</h4>
-                  <p>I can help outline refactors for this file and suggest safer incremental changes.</p>
-                  <div className="copilot-chip-group">
-                    <button className="copilot-chip">Apply code</button>
-                    <button className="copilot-chip">Refactor</button>
-                    <button className="copilot-chip">Suggest changes</button>
-                  </div>
-                </div>
-
                 <div className="copilot-conversation">
-                  <div className="copilot-msg assistant">
-                    Hi! I am ready when you are. Ask for explanations, cleanup ideas, or testing suggestions.
-                  </div>
-                  <div className="copilot-msg user">Can you help improve readability in this file?</div>
+                  {copilotMessages.map((message) => (
+                    <div key={message.id} className={`copilot-msg ${message.role}`}>
+                      {message.text}
+                    </div>
+                  ))}
+                  {isAiBusy ? <div className="copilot-msg assistant">Working on your request...</div> : null}
+                  <div ref={copilotMessagesEndRef} />
                 </div>
               </div>
 
-              <div className="copilot-input-wrap">
+              <form
+                className="copilot-input-wrap"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void handleCopilotSubmit()
+                }}
+              >
                 <input
+                  ref={copilotInputRef}
                   className="copilot-input"
                   type="text"
                   placeholder="Ask Copilot..."
-                  readOnly
+                  value={copilotInput}
+                  onChange={(event) => setCopilotInput(event.target.value)}
+                  disabled={isAiBusy}
                 />
-              </div>
+                <button className="copilot-send-btn" type="submit" disabled={isAiBusy || !copilotInput.trim()}>
+                  Send
+                </button>
+              </form>
             </aside>
           ) : null}
         </div>
