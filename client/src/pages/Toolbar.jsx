@@ -7,6 +7,8 @@ export const Toolbar = ({
   onStop,
   onAiUpdate: _onAiUpdate,
   onToggleSidebar,
+  isTerminalOpen,
+  onToggleTerminal,
   isCopilotOpen,
   onToggleCopilot,
 }) => {
@@ -40,6 +42,13 @@ export const Toolbar = ({
           title="Stop (Shift+F5)"
         >
           ⏹ Stop
+        </button>
+        <button
+          className={`toolbar-btn terminal ${isTerminalOpen ? 'active' : ''}`}
+          onClick={onToggleTerminal}
+          title="Toggle terminal"
+        >
+          {isTerminalOpen ? 'Terminal: ON' : 'Terminal: OFF'}
         </button>
       </div>
 

@@ -101,6 +101,16 @@
   color: #ffffff;
 }
 
+.toolbar-btn.terminal {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
+.toolbar-btn.terminal.active {
+  background: #a855f7;
+  color: #ffffff;
+}
+
 .toolbar-center {
   flex: 1;
   text-align: center;
