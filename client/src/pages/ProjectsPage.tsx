@@ -73,8 +73,19 @@ export function ProjectsPage() {
     navigate("/editor");
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem("authToken");
+    navigate("/");
+  };
+
   return (
     <section className="projects-page">
+      <div className="projects-topbar">
+        <button type="button" className="logout-btn" onClick={handleLogout}>
+          Logout
+        </button>
+      </div>
+
       <div className="projects-shell">
         <div className="projects-left soft-panel">
           <div className="left-intro">

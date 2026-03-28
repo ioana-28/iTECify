@@ -71,6 +71,7 @@ export function EditorScreen() {
   const [joinCode, setJoinCode] = useState('')
   const [roomError, setRoomError] = useState('')
   const [isRoomBusy, setIsRoomBusy] = useState(false)
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false)
 
   const currentRoom = rooms.find((room) => room.id === currentRoomId) || null
 
@@ -506,143 +507,201 @@ export function EditorScreen() {
           onStop={handleStop} 
           onAddAI={handleAddAI}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          isCopilotOpen={isCopilotOpen}
+          onToggleCopilot={() => setIsCopilotOpen((prev) => !prev)}
         />
 
-        <div className="room-controls">
-          <div className="room-controls-row">
-            <input
-              className="room-input"
-              type="text"
-              placeholder="Room name (optional)"
-              value={newRoomName}
-              onChange={(event) => setNewRoomName(event.target.value)}
-              disabled={isRoomBusy}
-            />
-            <button className="room-btn" onClick={handleCreateRoom} disabled={isRoomBusy}>
-              Create room
-            </button>
-            <input
-              className="room-input code"
-              type="text"
-              placeholder="Invite code"
-              value={joinCode}
-              onChange={(event) => setJoinCode(event.target.value.replace(/\s+/g, '').toUpperCase())}
-              disabled={isRoomBusy}
-            />
-            <button className="room-btn" onClick={handleJoinRoom} disabled={isRoomBusy || !joinCode.trim()}>
-              Join by code
-            </button>
-          </div>
+        <div className={`editor-content ${isCopilotOpen ? 'with-copilot' : ''}`}>
+          <div className="editor-center-column">
+            <div className="room-controls">
+              <div className="room-controls-heading">Collaboration Rooms</div>
+              <div className="room-controls-row">
+                <input
+                  className="room-input"
+                  type="text"
+                  placeholder="Room name (optional)"
+                  value={newRoomName}
+                  onChange={(event) => setNewRoomName(event.target.value)}
+                  disabled={isRoomBusy}
+                />
+                <button className="room-btn" onClick={handleCreateRoom} disabled={isRoomBusy}>
+                  Create room
+                </button>
+                <input
+                  className="room-input code"
+                  type="text"
+                  placeholder="Invite code"
+                  value={joinCode}
+                  onChange={(event) => setJoinCode(event.target.value.replace(/\s+/g, '').toUpperCase())}
+                  disabled={isRoomBusy}
+                />
+                <button className="room-btn" onClick={handleJoinRoom} disabled={isRoomBusy || !joinCode.trim()}>
+                  Join by code
+                </button>
+              </div>
 
-          <div className="room-controls-row">
-            <select
-              className="room-select"
-              value={currentRoomId}
-              onChange={(event) => setCurrentRoomId(event.target.value)}
-            >
-              {rooms.length === 0 ? <option value="">No rooms yet</option> : null}
-              {rooms.map((room) => (
-                <option key={room.id} value={room.id}>
-                  {room.name || 'Untitled room'} ({room.invite_code})
-                </option>
-              ))}
-            </select>
-            {currentRoom ? (
-              <span className="room-invite">Invite code: <strong>{currentRoom.invite_code}</strong></span>
-            ) : (
-              <span className="room-invite">Create or join a room to start collaboration.</span>
-            )}
-          </div>
-          {roomError ? <div className="room-error">{roomError}</div> : null}
-        </div>
+              <div className="room-controls-row">
+                <select
+                  className="room-select"
+                  value={currentRoomId}
+                  onChange={(event) => setCurrentRoomId(event.target.value)}
+                >
+                  {rooms.length === 0 ? <option value="">No rooms yet</option> : null}
+                  {rooms.map((room) => (
+                    <option key={room.id} value={room.id}>
+                      {room.name || 'Untitled room'} ({room.invite_code})
+                    </option>
+                  ))}
+                </select>
+                {currentRoom ? (
+                  <span className="room-invite">Invite code: <strong>{currentRoom.invite_code}</strong></span>
+                ) : (
+                  <span className="room-invite">Create or join a room to start collaboration.</span>
+                )}
+              </div>
+              {roomError ? <div className="room-error">{roomError}</div> : null}
+            </div>
 
-        {/* Editor Tabs */}
-        <EditorTabs 
-          files={openFiles} 
-          currentFile={currentFile}
-          onSelectFile={(file) => setCurrentFile(file)}
-          onCloseFile={handleCloseFile}
-        />
-
-        {/* Monaco Editor Container */}
-        {currentFile ? (
-          <div className="editor-container">
-            <div className="monaco-editor-wrapper">
-              <Editor
-                height="100%"
-                language={currentFile.language || 'javascript'}
-                value={code}
-                onChange={handleEditorChange}
-                onMount={(editor) => {
-                  editorRef.current = editor
-                  if (selectionDisposableRef.current) {
-                    selectionDisposableRef.current.dispose()
-                  }
-
-                  selectionDisposableRef.current = editor.onDidChangeCursorSelection((event) => {
-                    const socket = socketRef.current
-                    if (!socket || !currentFilePathRef.current) {
-                      return
-                    }
-
-                    const position = event.selection?.getPosition()
-                    if (!position) {
-                      return
-                    }
-
-                    socket.emit('cursor:move', {
-                      roomId: roomIdRef.current,
-                      userId: userIdRef.current,
-                      docId: currentFilePathRef.current,
-                      line: position.lineNumber,
-                      column: position.column,
-                      selectionStart: editor.getModel()?.getOffsetAt(event.selection.getStartPosition()),
-                      selectionEnd: editor.getModel()?.getOffsetAt(event.selection.getEndPosition()),
-                      timestamp: Date.now(),
-                    })
-                  })
-                }}
-                theme="vs-dark"
-                options={{
-                  minimap: { enabled: true },
-                  fontSize: 14,
-                  fontFamily: '"Consolas", "Monaco", "Courier New", monospace',
-                  eol: '\n',
-                  trimAutoWhitespace: false,
-                  lineNumbers: 'on',
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  tabSize: 2,
-                  wordWrap: 'on',
-                  formatOnPaste: true,
-                  formatOnType: false,
-                  renderWhitespace: 'none',
-                  cursorBlinking: 'blink',
-                  smoothScrolling: true,
-                  bracketPairColorization: true,
-                  autoClosingBrackets: 'beforeWhitespace',
-                  autoClosingQuotes: 'beforeWhitespace',
-                  autoSurround: 'languageDefined',
-                  linkedEditing: true,
-                }}
+            <div className="editor-workspace">
+              {/* Editor Tabs */}
+              <EditorTabs 
+                files={openFiles} 
+                currentFile={currentFile}
+                onSelectFile={(file) => setCurrentFile(file)}
+                onCloseFile={handleCloseFile}
               />
-            </div>
-          </div>
-        ) : (
-          <div className="editor-empty">
-            <div className="empty-state">
-              <h2>No file open</h2>
-              <p>Select a file from the explorer to start editing</p>
-            </div>
-          </div>
-        )}
 
-        {/* Terminal Panel */}
-        <Terminal
-          output={terminalOutput}
-          isOpen={isTerminalOpen}
-          onClose={() => setIsTerminalOpen(false)}
-        />
+              {/* Monaco Editor Container */}
+              {currentFile ? (
+                <div className="editor-container">
+                  <div className="monaco-editor-wrapper">
+                    <Editor
+                      height="100%"
+                      language={currentFile.language || 'javascript'}
+                      value={code}
+                      onChange={handleEditorChange}
+                      onMount={(editor) => {
+                        editorRef.current = editor
+                        if (selectionDisposableRef.current) {
+                          selectionDisposableRef.current.dispose()
+                        }
+
+                        selectionDisposableRef.current = editor.onDidChangeCursorSelection((event) => {
+                          const socket = socketRef.current
+                          if (!socket || !currentFilePathRef.current) {
+                            return
+                          }
+
+                          const position = event.selection?.getPosition()
+                          if (!position) {
+                            return
+                          }
+
+                          socket.emit('cursor:move', {
+                            roomId: roomIdRef.current,
+                            userId: userIdRef.current,
+                            docId: currentFilePathRef.current,
+                            line: position.lineNumber,
+                            column: position.column,
+                            selectionStart: editor.getModel()?.getOffsetAt(event.selection.getStartPosition()),
+                            selectionEnd: editor.getModel()?.getOffsetAt(event.selection.getEndPosition()),
+                            timestamp: Date.now(),
+                          })
+                        })
+                      }}
+                      theme="vs-light"
+                      options={{
+                        minimap: { enabled: true },
+                        fontSize: 14,
+                        fontFamily: '"Consolas", "Monaco", "Courier New", monospace',
+                        eol: '\n',
+                        trimAutoWhitespace: false,
+                        lineNumbers: 'on',
+                        scrollBeyondLastLine: false,
+                        automaticLayout: true,
+                        tabSize: 2,
+                        wordWrap: 'on',
+                        formatOnPaste: true,
+                        formatOnType: false,
+                        renderWhitespace: 'none',
+                        cursorBlinking: 'blink',
+                        smoothScrolling: true,
+                        bracketPairColorization: true,
+                        autoClosingBrackets: 'beforeWhitespace',
+                        autoClosingQuotes: 'beforeWhitespace',
+                        autoSurround: 'languageDefined',
+                        linkedEditing: true,
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="editor-empty">
+                  <div className="empty-state">
+                    <h2>No file open</h2>
+                    <p>Select a file from the explorer to start editing</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Terminal Panel */}
+            <Terminal
+              output={terminalOutput}
+              isOpen={isTerminalOpen}
+              onClose={() => setIsTerminalOpen(false)}
+            />
+          </div>
+
+          {isCopilotOpen ? (
+            <aside className="copilot-panel">
+              <div className="copilot-header">
+                <h3>AI Copilot</h3>
+                <button
+                  className="copilot-close-btn"
+                  onClick={() => setIsCopilotOpen(false)}
+                  title="Close Copilot panel"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="copilot-body">
+                <div className="copilot-suggestion-card">
+                  <h4>Quick suggestion</h4>
+                  <p>Improve your runtime logs and include context metadata for easier debugging.</p>
+                  <button className="copilot-primary-action">Generate better logging</button>
+                </div>
+
+                <div className="copilot-suggestion-card">
+                  <h4>Assistant note</h4>
+                  <p>I can help outline refactors for this file and suggest safer incremental changes.</p>
+                  <div className="copilot-chip-group">
+                    <button className="copilot-chip">Apply code</button>
+                    <button className="copilot-chip">Refactor</button>
+                    <button className="copilot-chip">Suggest changes</button>
+                  </div>
+                </div>
+
+                <div className="copilot-conversation">
+                  <div className="copilot-msg assistant">
+                    Hi! I am ready when you are. Ask for explanations, cleanup ideas, or testing suggestions.
+                  </div>
+                  <div className="copilot-msg user">Can you help improve readability in this file?</div>
+                </div>
+              </div>
+
+              <div className="copilot-input-wrap">
+                <input
+                  className="copilot-input"
+                  type="text"
+                  placeholder="Ask Copilot..."
+                  readOnly
+                />
+              </div>
+            </aside>
+          ) : null}
+        </div>
       </div>
     </div>
   )
