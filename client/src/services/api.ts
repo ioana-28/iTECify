@@ -33,6 +33,25 @@ export type RegisterPayload = {
   confirmPassword: string
 }
 
+export type RunLanguage = 'python' | 'node' | 'c' | 'cpp' | 'rust'
+
+export type ExecutePayload = {
+  language: RunLanguage
+  source: string
+  stdin?: string
+}
+
+export type StartExecutionResponse = {
+  sessionId: string
+}
+
+export type ExecutionEvent = {
+  type: 'scan' | 'status' | 'stdout' | 'stderr' | 'complete' | 'error'
+  message: string
+  timestamp: string
+  exitCode?: number
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${config.apiBaseUrl}${path}`, {
     ...init,
@@ -84,8 +103,21 @@ async function register(payload: RegisterPayload): Promise<AuthResponse> {
   })
 }
 
+async function startExecution(payload: ExecutePayload): Promise<StartExecutionResponse> {
+  return requestJson<StartExecutionResponse>('/api/execute', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+function streamExecution(sessionId: string): EventSource {
+  return new EventSource(`${config.apiBaseUrl}/api/execute/${sessionId}/stream`)
+}
+
 export const apiClient = {
   health,
   login,
   register,
+  startExecution,
+  streamExecution,
 }

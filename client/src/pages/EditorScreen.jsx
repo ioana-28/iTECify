@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar'
 import { Toolbar } from './Toolbar'
 import { EditorTabs } from './EditorTabs'
 import { Terminal } from './Terminal'
+import { runCodeExecutor } from './runCodeExecutor'
 import { createCollabSocket } from '../services/socket'
 import '../style/Editor.css'
 
@@ -268,14 +269,20 @@ export function EditorScreen() {
     }
   }
 
-  const handleRun = () => {
-    setIsTerminalOpen(true)
-    addTerminalOutput('$ npm start', 'info')
-    setTimeout(() => {
-      addTerminalOutput('Starting development server...', 'info')
-      addTerminalOutput('✓ Compiled successfully!', 'success')
-      addTerminalOutput('Local: http://localhost:3000', 'info')
-    }, 1000)
+  const handleRun = async () => {
+    try {
+      setTerminalOutput([])
+      await runCodeExecutor({
+        language: currentFile?.language,
+        source: code,
+        setTerminalOpen: setIsTerminalOpen,
+        addTerminalOutput,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown run error'
+      setIsTerminalOpen(true)
+      addTerminalOutput(`Execution failed: ${message}`, 'error')
+    }
   }
 
   const handleStop = () => {
