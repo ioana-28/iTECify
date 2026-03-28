@@ -40,7 +40,8 @@ function App() {
   const isHomeRoute = location.pathname === "/";
   const isLoginRoute = location.pathname === "/login";
   const isProjectsRoute = location.pathname === "/projects";
-  const hideTopbar = isHomeRoute || isLoginRoute || isProjectsRoute;
+  const isEditorRoute = location.pathname === "/editor";
+  const hideTopbar = isHomeRoute || isLoginRoute || isProjectsRoute || isEditorRoute;
   const isLandingShell = isHomeRoute || isLoginRoute;
 
   return (
