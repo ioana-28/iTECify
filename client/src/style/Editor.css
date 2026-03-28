@@ -451,6 +451,52 @@
   color: #6b7280;
 }
 
+.monaco-editor .remote-cursor-widget {
+  position: relative;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  --remote-cursor-color: #a78bfa;
+  --remote-cursor-offset: 0px;
+}
+
+.monaco-editor .remote-cursor-widget-line {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 1.35em;
+  border-left: 2px solid var(--remote-cursor-color);
+  transform: translateX(var(--remote-cursor-offset));
+  animation: remoteCursorBlink 1.15s ease-in-out infinite;
+}
+
+.monaco-editor .remote-cursor-widget-label {
+  position: absolute;
+  left: 4px;
+  top: -1.05em;
+  transform: translateX(var(--remote-cursor-offset));
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+  color: #ffffff;
+  background: var(--remote-cursor-color);
+  box-shadow: 0 2px 6px rgba(124, 58, 237, 0.22);
+}
+
+@keyframes remoteCursorBlink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
+}
+
 @media (max-width: 1024px) {
   .editor-screen {
     grid-template-columns: 230px 1fr;

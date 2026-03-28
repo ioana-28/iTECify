@@ -6,6 +6,7 @@ import { EditorTabs } from './EditorTabs'
 import { Terminal } from './Terminal'
 import { runCodeExecutor } from './runCodeExecutor'
 import { createCollabSocket } from '../services/socket'
+import { getLanguageFromPath } from '../services/language'
 import { apiClient } from '../services/api'
 import '../style/Editor.css'
 
@@ -27,17 +28,50 @@ function toTreeMap(nodes) {
   return map
 }
 
-function getLanguageFromPath(path) {
-  if (path.endsWith('.js') || path.endsWith('.jsx')) return 'javascript'
-  if (path.endsWith('.css')) return 'css'
-  if (path.endsWith('.json')) return 'json'
-  if (path.endsWith('.html')) return 'html'
-  if (path.endsWith('.md')) return 'markdown'
-  if (path.endsWith('.py')) return 'python'
-  if (path.endsWith('.rs')) return 'rust'
-  if (path.endsWith('.c')) return 'c'
-  if (path.endsWith('.cpp') || path.endsWith('.cc') || path.endsWith('.cxx')) return 'cpp'
-  return 'plaintext'
+const cursorPalette = [
+  '#f472b6',
+  '#ec4899',
+  '#a78bfa',
+  '#8b5cf6',
+  '#818cf8',
+  '#6366f1',
+  '#60a5fa',
+  '#38bdf8',
+  '#c084fc',
+]
+
+function hexToRgba(hexColor, alpha) {
+  const normalized = hexColor.replace('#', '')
+  if (normalized.length !== 6) {
+    return `rgba(167, 139, 250, ${alpha})`
+  }
+
+  const r = Number.parseInt(normalized.slice(0, 2), 16)
+  const g = Number.parseInt(normalized.slice(2, 4), 16)
+  const b = Number.parseInt(normalized.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+function toSafeClassSuffix(userId) {
+  return String(userId)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 24)
+}
+
+function toCursorLabel(userId, displayName) {
+  if (typeof displayName === 'string' && displayName.trim()) {
+    return displayName.trim().split(/\s+/)[0]
+  }
+
+  const raw = String(userId || 'guest').replace(/^user-/, '')
+  const short = raw.length > 7 ? raw.slice(0, 7) : raw
+  return short || 'Guest'
+}
+
+function escapeCssContent(text) {
+  return String(text).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 }
 
 function toFileSystemFromTree(treeMap) {
@@ -81,6 +115,7 @@ function toFileSystemFromTree(treeMap) {
 }
 
 export function EditorScreen() {
+  const cursorInstanceSuffixRef = useRef(Math.random().toString(36).slice(2, 8))
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
   const socketRef = useRef(null)
@@ -88,11 +123,17 @@ export function EditorScreen() {
   const copilotConversationEndRef = useRef(null)
   const roomIdRef = useRef('')
   const userIdRef = useRef(`user-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`)
+  const displayNameRef = useRef('Guest')
   const isRemoteChangeRef = useRef(false)
   const remoteCursorsRef = useRef(new Map())
+  const remoteCursorWidgetsRef = useRef(new Map())
+  const remoteCursorDecorationIdsRef = useRef([])
+  const cursorThemeMapRef = useRef(new Map())
+  const cursorStyleElementRef = useRef(null)
   const codeRef = useRef('')
   const currentFilePathRef = useRef('')
   const versionRef = useRef(0)
+  const lastEditorResyncAtRef = useRef(0)
   const selectionDisposableRef = useRef(null)
   const runControllerRef = useRef(null)
   const aiChangeDecorationIdsRef = useRef([])
@@ -107,6 +148,8 @@ export function EditorScreen() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [isTerminalOpen, setIsTerminalOpen] = useState(false)
   const [terminalOutput, setTerminalOutput] = useState([])
+  const [terminalHeight, setTerminalHeight] = useState(240)
+  const [isTerminalResizing, setIsTerminalResizing] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
   const [rooms, setRooms] = useState([])
   const [currentRoomId, setCurrentRoomId] = useState('')
@@ -161,6 +204,22 @@ export function EditorScreen() {
     setPendingSuggestion(null)
     clearAiChangeHighlights()
   }, [clearAiChangeHighlights, currentRoomId])
+    remoteCursorsRef.current = new Map()
+
+    if (editorRef.current) {
+      for (const widget of remoteCursorWidgetsRef.current.values()) {
+        editorRef.current.removeContentWidget(widget)
+      }
+    }
+    remoteCursorWidgetsRef.current = new Map()
+
+    if (editorRef.current) {
+      remoteCursorDecorationIdsRef.current = editorRef.current.deltaDecorations(
+        remoteCursorDecorationIdsRef.current,
+        [],
+      )
+    }
+  }, [currentRoomId])
 
   useEffect(() => {
     const rawAuthUser = localStorage.getItem('authUser')
@@ -168,8 +227,16 @@ export function EditorScreen() {
       try {
         const parsed = JSON.parse(rawAuthUser)
         if (parsed && parsed.id) {
-          userIdRef.current = `user-${parsed.id}`
+          userIdRef.current = `user-${parsed.id}-${cursorInstanceSuffixRef.current}`
         }
+
+        const resolvedName =
+          (typeof parsed?.name === 'string' && parsed.name.trim()) ||
+          (typeof parsed?.firstName === 'string' && parsed.firstName.trim()) ||
+          (typeof parsed?.username === 'string' && parsed.username.trim()) ||
+          (typeof parsed?.email === 'string' && parsed.email.split('@')[0]) ||
+          'Guest'
+        displayNameRef.current = resolvedName.split(/\s+/)[0]
       } catch {
         // Keep fallback generated user id
       }
@@ -316,6 +383,247 @@ export function EditorScreen() {
     setTerminalOutput((prev) => [...prev, { type, text }])
   }, [])
 
+  useEffect(() => {
+    if (!isTerminalResizing) {
+      return
+    }
+
+    const minHeight = 180
+    const maxHeight = 520
+
+    const onMouseMove = (event) => {
+      const viewportHeight = window.innerHeight || 0
+      const nextHeight = Math.min(maxHeight, Math.max(minHeight, viewportHeight - event.clientY))
+      setTerminalHeight(nextHeight)
+    }
+
+    const onMouseUp = () => {
+      setIsTerminalResizing(false)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [isTerminalResizing])
+
+  useEffect(() => {
+    if (!isTerminalResizing) {
+      return
+    }
+
+    const previousSelect = document.body.style.userSelect
+    const previousCursor = document.body.style.cursor
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'ns-resize'
+
+    return () => {
+      document.body.style.userSelect = previousSelect
+      document.body.style.cursor = previousCursor
+    }
+  }, [isTerminalResizing])
+
+  const handleTerminalResizeStart = useCallback((event) => {
+    event.preventDefault()
+    setIsTerminalResizing(true)
+  }, [])
+
+  const ensureRemoteCursorTheme = useCallback((userId, displayName) => {
+    const existingTheme = cursorThemeMapRef.current.get(userId)
+    if (existingTheme) {
+      return existingTheme
+    }
+
+    const usedColors = new Set(Array.from(cursorThemeMapRef.current.values()).map((item) => item.color))
+    const availableColors = cursorPalette.filter((color) => !usedColors.has(color))
+    const colorPool = availableColors.length > 0 ? availableColors : cursorPalette
+    const color = colorPool[Math.floor(Math.random() * colorPool.length)]
+    const suffix = `${toSafeClassSuffix(userId)}-${Math.random().toString(36).slice(2, 7)}`
+
+    const theme = {
+      color,
+      selectionClass: `remote-cursor-selection-${suffix}`,
+      label: toCursorLabel(userId, displayName),
+    }
+
+    cursorThemeMapRef.current.set(userId, theme)
+
+    if (typeof document !== 'undefined') {
+      if (!cursorStyleElementRef.current) {
+        const styleElement = document.createElement('style')
+        styleElement.setAttribute('data-remote-cursors', 'true')
+        document.head.appendChild(styleElement)
+        cursorStyleElementRef.current = styleElement
+      }
+
+      const styleElement = cursorStyleElementRef.current
+      styleElement.textContent += `
+        .${theme.selectionClass} {
+          background: ${hexToRgba(theme.color, 0.2)};
+          border-bottom: 1px solid ${hexToRgba(theme.color, 0.65)};
+        }
+      `
+    }
+
+    return theme
+  }, [])
+
+  const removeRemoteCursorWidget = useCallback((editor, userId) => {
+    const widget = remoteCursorWidgetsRef.current.get(userId)
+    if (!widget) {
+      return
+    }
+
+    editor.removeContentWidget(widget)
+    remoteCursorWidgetsRef.current.delete(userId)
+  }, [])
+
+  const upsertRemoteCursorWidget = useCallback((editor, monaco, userId, theme, lineNumber, column, offsetIndex) => {
+    let widget = remoteCursorWidgetsRef.current.get(userId)
+
+    if (!widget) {
+      const node = document.createElement('div')
+      node.className = 'remote-cursor-widget'
+
+      const lineNode = document.createElement('div')
+      lineNode.className = 'remote-cursor-widget-line'
+
+      const labelNode = document.createElement('div')
+      labelNode.className = 'remote-cursor-widget-label'
+
+      node.appendChild(lineNode)
+      node.appendChild(labelNode)
+
+      widget = {
+        id: `remote-cursor-widget-${toSafeClassSuffix(userId)}-${Math.random().toString(36).slice(2, 7)}`,
+        position: null,
+        node,
+        labelNode,
+        getId() {
+          return this.id
+        },
+        getDomNode() {
+          return this.node
+        },
+        getPosition() {
+          if (!this.position) {
+            return null
+          }
+
+          return {
+            position: this.position,
+            preference: [monaco.editor.ContentWidgetPositionPreference.EXACT],
+          }
+        },
+      }
+
+      remoteCursorWidgetsRef.current.set(userId, widget)
+      editor.addContentWidget(widget)
+    }
+
+    widget.position = { lineNumber, column }
+    widget.node.style.setProperty('--remote-cursor-color', theme.color)
+    widget.node.style.setProperty('--remote-cursor-offset', `${offsetIndex * 3}px`)
+    widget.labelNode.textContent = theme.label
+    editor.layoutContentWidget(widget)
+  }, [])
+
+  const applyRemoteCursorDecorations = useCallback(() => {
+    const editor = editorRef.current
+    const monaco = monacoRef.current
+    if (!editor || !monaco) {
+      return
+    }
+
+    const model = editor.getModel()
+    if (!model) {
+      remoteCursorDecorationIdsRef.current = editor.deltaDecorations(remoteCursorDecorationIdsRef.current, [])
+      for (const widget of remoteCursorWidgetsRef.current.values()) {
+        editor.removeContentWidget(widget)
+      }
+      remoteCursorWidgetsRef.current = new Map()
+      return
+    }
+
+    const now = Date.now()
+    const visibleDocId = currentFilePathRef.current
+    const localPosition = editor.getPosition()
+    const decorations = []
+    const positionOccupancy = new Map()
+    const activeCursorUserIds = new Set()
+
+    for (const [userId, payload] of remoteCursorsRef.current.entries()) {
+      if (!payload || userId === userIdRef.current || payload.docId !== visibleDocId) {
+        continue
+      }
+
+      if (typeof payload.timestamp === 'number' && now - payload.timestamp > 12_000) {
+        remoteCursorsRef.current.delete(userId)
+        removeRemoteCursorWidget(editor, userId)
+        continue
+      }
+
+      const lineNumber = Math.min(Math.max(1, Math.round(payload.line || 1)), model.getLineCount())
+      const lineMaxColumn = model.getLineMaxColumn(lineNumber)
+      const column = Math.min(Math.max(1, Math.round(payload.column || 1)), lineMaxColumn)
+      const theme = ensureRemoteCursorTheme(userId, payload.displayName)
+      const positionKey = `${lineNumber}:${column}`
+      let stackIndex = positionOccupancy.get(positionKey) ?? 0
+      if (
+        stackIndex === 0 &&
+        localPosition &&
+        localPosition.lineNumber === lineNumber &&
+        localPosition.column === column
+      ) {
+        stackIndex = 1
+      }
+      positionOccupancy.set(positionKey, stackIndex + 1)
+      const offsetIndex = Math.min(stackIndex, 4)
+
+      upsertRemoteCursorWidget(editor, monaco, userId, theme, lineNumber, column, offsetIndex)
+      activeCursorUserIds.add(userId)
+
+      if (typeof payload.selectionStart === 'number' && typeof payload.selectionEnd === 'number') {
+        const minOffset = Math.max(0, Math.min(payload.selectionStart, payload.selectionEnd))
+        const maxOffset = Math.max(minOffset, Math.max(payload.selectionStart, payload.selectionEnd))
+
+        if (minOffset !== maxOffset) {
+          const boundedStart = Math.min(minOffset, model.getValueLength())
+          const boundedEnd = Math.min(maxOffset, model.getValueLength())
+          const startPos = model.getPositionAt(boundedStart)
+          const endPos = model.getPositionAt(boundedEnd)
+
+          decorations.push({
+            range: new monaco.Range(
+              startPos.lineNumber,
+              startPos.column,
+              endPos.lineNumber,
+              endPos.column,
+            ),
+            options: {
+              className: theme.selectionClass,
+              stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+            },
+          })
+        }
+      }
+    }
+
+    for (const widgetUserId of remoteCursorWidgetsRef.current.keys()) {
+      if (!activeCursorUserIds.has(widgetUserId)) {
+        removeRemoteCursorWidget(editor, widgetUserId)
+      }
+    }
+
+    remoteCursorDecorationIdsRef.current = editor.deltaDecorations(
+      remoteCursorDecorationIdsRef.current,
+      decorations,
+    )
+  }, [ensureRemoteCursorTheme, removeRemoteCursorWidget, upsertRemoteCursorWidget])
+
   const requestTreeSync = useCallback(() => {
     const socket = socketRef.current
     const roomId = roomIdRef.current
@@ -352,10 +660,77 @@ export function EditorScreen() {
     ])
   }, [])
 
-  const applyRemoteCodeUpdate = useCallback((nextCode) => {
+  const applyRemoteCodeUpdate = useCallback((nextCode, operation = null) => {
+    const editor = editorRef.current
+    const model = editor?.getModel?.()
+    const monaco = monacoRef.current
+
+    if (!editor || !model || !monaco) {
+      isRemoteChangeRef.current = true
+      codeRef.current = nextCode
+      setCode(nextCode)
+      setTimeout(() => {
+        isRemoteChangeRef.current = false
+      }, 0)
+      return
+    }
+
+    if (model.getValue() === nextCode) {
+      codeRef.current = nextCode
+      setCode(nextCode)
+      return
+    }
+
     isRemoteChangeRef.current = true
-    codeRef.current = nextCode
-    setCode(nextCode)
+
+    if (operation && typeof operation.pos === 'number') {
+      const startOffset = Math.max(0, Math.min(operation.pos, model.getValueLength()))
+
+      if (operation.type === 'insert' && typeof operation.text === 'string') {
+        const startPos = model.getPositionAt(startOffset)
+        editor.executeEdits('remote-collab', [
+          {
+            range: new monaco.Range(startPos.lineNumber, startPos.column, startPos.lineNumber, startPos.column),
+            text: operation.text,
+            forceMoveMarkers: false,
+          },
+        ])
+      } else if (operation.type === 'delete' && typeof operation.length === 'number') {
+        const endOffset = Math.max(startOffset, Math.min(startOffset + operation.length, model.getValueLength()))
+        const startPos = model.getPositionAt(startOffset)
+        const endPos = model.getPositionAt(endOffset)
+        editor.executeEdits('remote-collab', [
+          {
+            range: new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column),
+            text: '',
+            forceMoveMarkers: false,
+          },
+        ])
+      } else {
+        const fullRange = model.getFullModelRange()
+        editor.executeEdits('remote-collab-sync', [
+          {
+            range: fullRange,
+            text: nextCode,
+            forceMoveMarkers: false,
+          },
+        ])
+      }
+    } else {
+      const fullRange = model.getFullModelRange()
+      editor.executeEdits('remote-collab-sync', [
+        {
+          range: fullRange,
+          text: nextCode,
+          forceMoveMarkers: false,
+        },
+      ])
+    }
+
+    const appliedCode = model.getValue()
+    codeRef.current = appliedCode
+    setCode(appliedCode)
+
     setTimeout(() => {
       isRemoteChangeRef.current = false
     }, 0)
@@ -489,6 +864,19 @@ export function EditorScreen() {
         return
       }
 
+      const isEditorDriftWarning =
+        payload.event === 'editor:change' &&
+        /(out of bounds|exceeds content length|version mismatch)/i.test(payload.message)
+
+      if (isEditorDriftWarning) {
+        const now = Date.now()
+        if (now - lastEditorResyncAtRef.current > 600) {
+          lastEditorResyncAtRef.current = now
+          requestRoomFileSync()
+        }
+        return
+      }
+
       addTerminalOutput(`${payload.event}: ${payload.message}`, 'warning')
       setIsTerminalOpen(true)
     }
@@ -519,7 +907,7 @@ export function EditorScreen() {
         versionRef.current += 1
       }
       codeRef.current = nextCode
-      applyRemoteCodeUpdate(nextCode)
+      applyRemoteCodeUpdate(nextCode, payload.op)
     }
 
     const handleTerminalOutput = (payload) => {
@@ -537,6 +925,7 @@ export function EditorScreen() {
       }
 
       remoteCursorsRef.current.set(payload.userId, payload)
+      applyRemoteCursorDecorations()
     }
 
     socket.on('room:state-sync', handleStateSync)
@@ -548,6 +937,22 @@ export function EditorScreen() {
     socket.on('cursor:update', handleCursorUpdate)
 
     return () => {
+      remoteCursorsRef.current = new Map()
+
+      if (editorRef.current) {
+        for (const widget of remoteCursorWidgetsRef.current.values()) {
+          editorRef.current.removeContentWidget(widget)
+        }
+      }
+      remoteCursorWidgetsRef.current = new Map()
+
+      if (editorRef.current) {
+        remoteCursorDecorationIdsRef.current = editorRef.current.deltaDecorations(
+          remoteCursorDecorationIdsRef.current,
+          [],
+        )
+      }
+
       if (selectionDisposableRef.current) {
         selectionDisposableRef.current.dispose()
         selectionDisposableRef.current = null
@@ -564,7 +969,11 @@ export function EditorScreen() {
       socket.disconnect()
       socketRef.current = null
     }
-  }, [addTerminalOutput, applyRemoteCodeUpdate, applyTextOperation, currentRoomId, requestRoomFileSync, requestTreeSync])
+  }, [addTerminalOutput, applyRemoteCodeUpdate, applyRemoteCursorDecorations, applyTextOperation, currentRoomId, requestRoomFileSync, requestTreeSync])
+
+  useEffect(() => {
+    applyRemoteCursorDecorations()
+  }, [applyRemoteCursorDecorations, code, currentFile])
 
   const handleOpenFile = (name, path, language) => {
     // Check if file is already open
@@ -589,7 +998,7 @@ export function EditorScreen() {
     clearAiChangeHighlights()
   }
 
-  const handleCreateNode = (nodeType) => {
+  const handleCreateNode = (nodeType, options = null) => {
     const socket = socketRef.current
     const roomId = roomIdRef.current
     if (!socket || !roomId) {
@@ -597,28 +1006,43 @@ export function EditorScreen() {
       return
     }
 
-    const defaultName = nodeType === 'folder' ? 'new-folder' : 'new-file.js'
-    const name = window.prompt(`Enter ${nodeType} name:`, defaultName)
-    if (name === null) {
-      return
+    const providedName = typeof options?.name === 'string' ? options.name : null
+    const providedParentPath =
+      options?.parentPath === null || typeof options?.parentPath === 'string'
+        ? options.parentPath
+        : undefined
+
+    let trimmedName = providedName?.trim() ?? ''
+    if (!trimmedName) {
+      const defaultName = nodeType === 'folder' ? 'new-folder' : 'new-file.js'
+      const promptName = window.prompt(`Enter ${nodeType} name:`, defaultName)
+      if (promptName === null) {
+        return
+      }
+      trimmedName = promptName.trim()
     }
 
-    const trimmedName = name.trim()
     if (!trimmedName) {
       addTerminalOutput('Create failed: name is required.', 'warning')
       return
     }
 
-    const parentPath = window.prompt('Parent folder path (leave empty for root):', '')
-    if (parentPath === null) {
-      return
+    let normalizedParentPath = null
+    if (providedParentPath !== undefined) {
+      normalizedParentPath = providedParentPath && providedParentPath.trim() ? providedParentPath.trim() : null
+    } else {
+      const parentPath = window.prompt('Parent folder path (leave empty for root):', '')
+      if (parentPath === null) {
+        return
+      }
+      normalizedParentPath = parentPath.trim() || null
     }
 
     socket.emit('tree:create', {
       roomId,
       name: trimmedName,
       nodeType,
-      parentPath: parentPath.trim() || null,
+      parentPath: normalizedParentPath,
     })
   }
 
@@ -1047,10 +1471,11 @@ Context handling requirements:
     const nextCode = value || ''
 
     if (isRemoteChangeRef.current) {
-      isRemoteChangeRef.current = false
       if (codeRef.current === nextCode) {
         return
       }
+
+      // Ignore Monaco onChange fired by remote executeEdits.
       codeRef.current = nextCode
       setCode(nextCode)
       return
@@ -1067,8 +1492,8 @@ Context handling requirements:
         onSelectFile={handleOpenFile}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-        onCreateFile={() => handleCreateNode('file')}
-        onCreateFolder={() => handleCreateNode('folder')}
+        onCreateFile={(options) => handleCreateNode('file', options)}
+        onCreateFolder={(options) => handleCreateNode('folder', options)}
       />
 
       {/* Main editor area */}
@@ -1076,10 +1501,10 @@ Context handling requirements:
         {/* Toolbar */}
         <Toolbar 
           onRun={handleRun} 
-          onRunStep={handleRunStep}
           onStop={handleStop} 
           onAiUpdate={handleAiUpdate}
-          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          isTerminalOpen={isTerminalOpen}
+          onToggleTerminal={() => setIsTerminalOpen((prev) => !prev)}
           isCopilotOpen={isCopilotOpen}
           onToggleCopilot={() => setIsCopilotOpen((prev) => !prev)}
         />
@@ -1160,6 +1585,8 @@ Context handling requirements:
                       onMount={(editor, monaco) => {
                         editorRef.current = editor
                         monacoRef.current = monaco
+
+                        applyRemoteCursorDecorations()
                         if (selectionDisposableRef.current) {
                           selectionDisposableRef.current.dispose()
                         }
@@ -1178,6 +1605,7 @@ Context handling requirements:
                           socket.emit('cursor:move', {
                             roomId: roomIdRef.current,
                             userId: userIdRef.current,
+                            displayName: displayNameRef.current,
                             docId: currentFilePathRef.current,
                             line: position.lineNumber,
                             column: position.column,
@@ -1227,6 +1655,9 @@ Context handling requirements:
             <Terminal
               output={terminalOutput}
               isOpen={isTerminalOpen}
+              height={terminalHeight}
+              isResizing={isTerminalResizing}
+              onResizeStart={handleTerminalResizeStart}
               onClose={() => setIsTerminalOpen(false)}
             />
           </div>
