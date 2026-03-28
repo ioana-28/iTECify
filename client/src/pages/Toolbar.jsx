@@ -6,7 +6,7 @@ export const Toolbar = ({
   onStop,
   onAiUpdate: _onAiUpdate,
   isTerminalOpen,
-  onToggleTerminal: _onToggleSidebar,
+  onToggleTerminal,
   isCopilotOpen,
   onToggleCopilot,
 }) => {
