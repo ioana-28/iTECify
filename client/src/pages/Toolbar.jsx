@@ -1,6 +1,6 @@
 import '../style/Toolbar.css'
 
-export const Toolbar = ({ onRun, onStop, onAddAI, onToggleSidebar }) => {
+export const Toolbar = ({ onRun, onRunStep, onStop, onAddAI, onToggleSidebar }) => {
   // Mock collaborative users - in real implementation, this would come from state
   const collaborators = [
     { id: 1, name: 'You', color: 'user-1', status: 'active' },
@@ -22,6 +22,9 @@ export const Toolbar = ({ onRun, onStop, onAddAI, onToggleSidebar }) => {
         <span className="separator"></span>
         <button className="toolbar-btn" onClick={onRun} title="Run (F5)">
           ▶ Run
+        </button>
+        <button className="toolbar-btn" onClick={onRunStep} title="Step Run (F6)">
+          ⏭ Step
         </button>
         <button
           className="toolbar-btn stop"
