@@ -1,8 +1,9 @@
-/* Editor Tabs - Professional IDE Style */
+/* Editor Tabs - Soft Pastel Purple */
 .editor-tabs {
   display: flex;
-  background: #14192b;
-  border-bottom: 1px solid #22272e;
+  background: transparent;
+  border: 1px solid #ddd6fe;
+  border-radius: 12px;
   padding: 0;
   margin: 0;
   list-style: none;
@@ -11,6 +12,7 @@
   align-items: stretch;
   flex-shrink: 0;
   gap: 0;
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.07);
 }
 
 .tab {
@@ -18,12 +20,12 @@
   align-items: center;
   gap: 8px;
   padding: 0 14px;
-  height: 36px;
-  background: #14192b;
-  border-right: 1px solid #22272e;
+  height: 38px;
+  background: rgba(255, 255, 255, 0.86);
+  border-right: 1px solid #ddd6fe;
   border-bottom: 2px solid transparent;
   cursor: pointer;
-  color: #8b92a9;
+  color: #6b7280;
   font-size: 12px;
   transition: all 0.15s;
   white-space: nowrap;
@@ -32,14 +34,14 @@
 }
 
 .tab:hover {
-  background: #1a202c;
-  color: #c3cce6;
+  background: #ede9fe;
+  color: #1f2937;
 }
 
 .tab.active {
-  background: #0f1419;
-  color: #e0e6f0;
-  border-bottom-color: #3b82f6;
+  background: #ffffff;
+  color: #1f2937;
+  border-bottom-color: #a78bfa;
 }
 
 .tab-icon {
@@ -54,9 +56,9 @@
 }
 
 .tab-close {
-  background: none;
+  background: transparent;
   border: none;
-  color: #7a8291;
+  color: #6b7280;
   cursor: pointer;
   font-size: 11px;
   padding: 2px 4px;
@@ -66,12 +68,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 2px;
+  border-radius: 6px;
 }
 
 .tab-close:hover {
-  background: #22272e;
-  color: #e0e6f0;
+  background: #ddd6fe;
+  color: #1f2937;
 }
 
 /* Scrollbar */
@@ -84,12 +86,12 @@
 }
 
 .editor-tabs::-webkit-scrollbar-thumb {
-  background: #3c4452;
-  border-radius: 3px;
+  background: #c4b5fd;
+  border-radius: 999px;
 }
 
 .editor-tabs::-webkit-scrollbar-thumb:hover {
-  background: #4a5568;
+  background: #a78bfa;
 }
 
 @media (max-width: 768px) {
