@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import '../style/Sidebar.css'
 
 export const Sidebar = ({
@@ -10,6 +10,18 @@ export const Sidebar = ({
   onCreateFolder,
 }) => {
   const [expandedFolders, setExpandedFolders] = useState(new Set(['src']))
+  const [pendingCreate, setPendingCreate] = useState(null)
+  const [pendingCreateName, setPendingCreateName] = useState('')
+  const pendingInputRef = useRef(null)
+
+  useEffect(() => {
+    if (!pendingCreate || !pendingInputRef.current) {
+      return
+    }
+
+    pendingInputRef.current.focus()
+    pendingInputRef.current.select()
+  }, [pendingCreate])
 
   const toggleFolder = (path) => {
     const newExpanded = new Set(expandedFolders)
@@ -20,6 +32,61 @@ export const Sidebar = ({
     }
     setExpandedFolders(newExpanded)
   }
+
+  const renderInlineRow = (parentPath) => {
+    if (!pendingCreate || pendingCreate.parentPath !== parentPath) {
+      return null
+    }
+
+    return (
+      <div className="file-item create-inline-row">
+        <span className="file-icon">{pendingCreate.type === 'file' ? '📄' : '📁'}</span>
+        <input
+          ref={pendingInputRef}
+          className="create-inline-input"
+          value={pendingCreateName}
+          onChange={(event) => setPendingCreateName(event.target.value)}
+          placeholder={`New ${pendingCreate.type} name`}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              submitInlineCreate()
+            }
+            if (event.key === 'Escape') {
+              cancelInlineCreate()
+            }
+          }}
+          onBlur={cancelInlineCreate}
+        />
+      </div>
+    )
+  }
+
+  const renderActionButtons = (parentPath, compact = false) => (
+    <div className={`node-actions ${compact ? 'compact' : ''}`}>
+      <button
+        className="node-action-btn file-action"
+        onClick={(event) => {
+          event.stopPropagation()
+          startInlineCreate('file', parentPath)
+        }}
+        title="New file"
+        aria-label="New file"
+      >
+        <span className="action-glyph file-glyph" aria-hidden="true" />
+      </button>
+      <button
+        className="node-action-btn folder-action"
+        onClick={(event) => {
+          event.stopPropagation()
+          startInlineCreate('folder', parentPath)
+        }}
+        title="New folder"
+        aria-label="New folder"
+      >
+        <span className="action-glyph folder-glyph" aria-hidden="true" />
+      </button>
+    </div>
+  )
 
   const renderFileTree = (items, parentPath = '') => {
     return Object.entries(items).map(([name, item]) => {
@@ -33,13 +100,13 @@ export const Sidebar = ({
               className="file-item folder-item"
               onClick={() => toggleFolder(fullPath)}
             >
-              <span className="file-icon">
-                {isExpanded ? '▼' : '▶'}
-              </span>
+              <span className="file-icon">{isExpanded ? '▼' : '▶'}</span>
               <span className="file-name">{name}</span>
+              {renderActionButtons(fullPath, true)}
             </div>
             {isExpanded && item.files && (
               <div className="folder-contents">
+                {renderInlineRow(fullPath)}
                 {renderFileTree(item.files, fullPath)}
               </div>
             )}
@@ -78,24 +145,67 @@ export const Sidebar = ({
     })
   }
 
+  const startInlineCreate = (nodeType, parentPath = null) => {
+    const normalizedParentPath = parentPath && parentPath.trim() ? parentPath : null
+    if (normalizedParentPath) {
+      setExpandedFolders((prev) => {
+        const next = new Set(prev)
+        next.add(normalizedParentPath)
+        return next
+      })
+    }
+
+    setPendingCreate({
+      type: nodeType,
+      parentPath: normalizedParentPath,
+    })
+    setPendingCreateName('')
+  }
+
+  const cancelInlineCreate = () => {
+    setPendingCreate(null)
+    setPendingCreateName('')
+  }
+
+  const submitInlineCreate = () => {
+    if (!pendingCreate) {
+      return
+    }
+
+    const trimmedName = pendingCreateName.trim()
+    if (!trimmedName) {
+      cancelInlineCreate()
+      return
+    }
+
+    const payload = {
+      name: trimmedName,
+      parentPath: pendingCreate.parentPath,
+    }
+
+    if (pendingCreate.type === 'file') {
+      onCreateFile(payload)
+    } else {
+      onCreateFolder(payload)
+    }
+
+    cancelInlineCreate()
+  }
+
   return (
     <>
       {sidebarOpen && (
         <aside className="sidebar">
           <div className="sidebar-header">
             <span>Explorer</span>
-            <div className="sidebar-actions">
-              <button className="sidebar-action-btn" onClick={onCreateFile} title="Create file">
-                +F
-              </button>
-              <button className="sidebar-action-btn" onClick={onCreateFolder} title="Create folder">
-                +D
-              </button>
-            </div>
           </div>
           <div className="sidebar-section">
-            <div className="section-title">PROJECT</div>
+            <div className="section-title-row">
+              <div className="section-title">PROJECT</div>
+              {renderActionButtons(null)}
+            </div>
             <div className="file-tree">
+              {renderInlineRow(null)}
               {renderFileTree(fileSystem)}
             </div>
           </div>

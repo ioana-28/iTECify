@@ -525,7 +525,7 @@ export function EditorScreen() {
     requestRoomFileSync()
   }
 
-  const handleCreateNode = (nodeType) => {
+  const handleCreateNode = (nodeType, options = null) => {
     const socket = socketRef.current
     const roomId = roomIdRef.current
     if (!socket || !roomId) {
@@ -533,28 +533,43 @@ export function EditorScreen() {
       return
     }
 
-    const defaultName = nodeType === 'folder' ? 'new-folder' : 'new-file.js'
-    const name = window.prompt(`Enter ${nodeType} name:`, defaultName)
-    if (name === null) {
-      return
+    const providedName = typeof options?.name === 'string' ? options.name : null
+    const providedParentPath =
+      options?.parentPath === null || typeof options?.parentPath === 'string'
+        ? options.parentPath
+        : undefined
+
+    let trimmedName = providedName?.trim() ?? ''
+    if (!trimmedName) {
+      const defaultName = nodeType === 'folder' ? 'new-folder' : 'new-file.js'
+      const promptName = window.prompt(`Enter ${nodeType} name:`, defaultName)
+      if (promptName === null) {
+        return
+      }
+      trimmedName = promptName.trim()
     }
 
-    const trimmedName = name.trim()
     if (!trimmedName) {
       addTerminalOutput('Create failed: name is required.', 'warning')
       return
     }
 
-    const parentPath = window.prompt('Parent folder path (leave empty for root):', '')
-    if (parentPath === null) {
-      return
+    let normalizedParentPath = null
+    if (providedParentPath !== undefined) {
+      normalizedParentPath = providedParentPath && providedParentPath.trim() ? providedParentPath.trim() : null
+    } else {
+      const parentPath = window.prompt('Parent folder path (leave empty for root):', '')
+      if (parentPath === null) {
+        return
+      }
+      normalizedParentPath = parentPath.trim() || null
     }
 
     socket.emit('tree:create', {
       roomId,
       name: trimmedName,
       nodeType,
-      parentPath: parentPath.trim() || null,
+      parentPath: normalizedParentPath,
     })
   }
 
@@ -793,8 +808,8 @@ export function EditorScreen() {
         onSelectFile={handleOpenFile}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-        onCreateFile={() => handleCreateNode('file')}
-        onCreateFolder={() => handleCreateNode('folder')}
+        onCreateFile={(options) => handleCreateNode('file', options)}
+        onCreateFolder={(options) => handleCreateNode('folder', options)}
       />
 
       {/* Main editor area */}
