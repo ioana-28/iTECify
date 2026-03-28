@@ -42,9 +42,8 @@ function App() {
   const isLoginRoute = location.pathname === "/login";
   const isProjectsRoute = location.pathname === "/projects";
   const isHelpRoute = location.pathname === "/help";
-  
   const isEditorRoute = location.pathname === "/editor";
- const hideTopbar = isHomeRoute || isLoginRoute || isProjectsRoute || isHelpRoute || isEditorRoute;
+  const hideTopbar = isHomeRoute || isLoginRoute || isProjectsRoute || isHelpRoute || isEditorRoute; 
   const isLandingShell = isHomeRoute || isLoginRoute;
 
   return (

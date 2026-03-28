@@ -50,11 +50,6 @@
   color: #166534;
 }
 
-.toolbar-btn.step {
-  background: #bfdbfe;
-  color: #1e3a8a;
-}
-
 .toolbar-btn.stop {
   background: #fecaca;
   color: #7f1d1d;
@@ -72,6 +67,16 @@
 
 .toolbar-btn.copilot.active {
   background: #a78bfa;
+  color: #ffffff;
+}
+
+.toolbar-btn.terminal {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
+.toolbar-btn.terminal.active {
+  background: #a855f7;
   color: #ffffff;
 }
 

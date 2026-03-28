@@ -6,6 +6,7 @@ import { EditorTabs } from './EditorTabs'
 import { Terminal } from './Terminal'
 import { runCodeExecutor } from './runCodeExecutor'
 import { createCollabSocket } from '../services/socket'
+import { getLanguageFromPath } from '../services/language'
 import { apiClient } from '../services/api'
 import '../style/Editor.css'
 
@@ -159,6 +160,8 @@ export function EditorScreen() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [isTerminalOpen, setIsTerminalOpen] = useState(false)
   const [terminalOutput, setTerminalOutput] = useState([])
+  const [terminalHeight, setTerminalHeight] = useState(240)
+  const [isTerminalResizing, setIsTerminalResizing] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
   const [rooms, setRooms] = useState([])
   const [currentRoomId, setCurrentRoomId] = useState('')
@@ -328,6 +331,54 @@ export function EditorScreen() {
 
   const addTerminalOutput = useCallback((text, type = 'info') => {
     setTerminalOutput((prev) => [...prev, { type, text }])
+  }, [])
+
+  useEffect(() => {
+    if (!isTerminalResizing) {
+      return
+    }
+
+    const minHeight = 180
+    const maxHeight = 520
+
+    const onMouseMove = (event) => {
+      const viewportHeight = window.innerHeight || 0
+      const nextHeight = Math.min(maxHeight, Math.max(minHeight, viewportHeight - event.clientY))
+      setTerminalHeight(nextHeight)
+    }
+
+    const onMouseUp = () => {
+      setIsTerminalResizing(false)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [isTerminalResizing])
+
+  useEffect(() => {
+    if (!isTerminalResizing) {
+      return
+    }
+
+    const previousSelect = document.body.style.userSelect
+    const previousCursor = document.body.style.cursor
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'ns-resize'
+
+    return () => {
+      document.body.style.userSelect = previousSelect
+      document.body.style.cursor = previousCursor
+    }
+  }, [isTerminalResizing])
+
+  const handleTerminalResizeStart = useCallback((event) => {
+    event.preventDefault()
+    setIsTerminalResizing(true)
   }, [])
 
   const ensureRemoteCursorTheme = useCallback((userId, displayName) => {
@@ -896,7 +947,7 @@ export function EditorScreen() {
     requestRoomFileSync()
   }
 
-  const handleCreateNode = (nodeType) => {
+  const handleCreateNode = (nodeType, options = null) => {
     const socket = socketRef.current
     const roomId = roomIdRef.current
     if (!socket || !roomId) {
@@ -904,28 +955,43 @@ export function EditorScreen() {
       return
     }
 
-    const defaultName = nodeType === 'folder' ? 'new-folder' : 'new-file.js'
-    const name = window.prompt(`Enter ${nodeType} name:`, defaultName)
-    if (name === null) {
-      return
+    const providedName = typeof options?.name === 'string' ? options.name : null
+    const providedParentPath =
+      options?.parentPath === null || typeof options?.parentPath === 'string'
+        ? options.parentPath
+        : undefined
+
+    let trimmedName = providedName?.trim() ?? ''
+    if (!trimmedName) {
+      const defaultName = nodeType === 'folder' ? 'new-folder' : 'new-file.js'
+      const promptName = window.prompt(`Enter ${nodeType} name:`, defaultName)
+      if (promptName === null) {
+        return
+      }
+      trimmedName = promptName.trim()
     }
 
-    const trimmedName = name.trim()
     if (!trimmedName) {
       addTerminalOutput('Create failed: name is required.', 'warning')
       return
     }
 
-    const parentPath = window.prompt('Parent folder path (leave empty for root):', '')
-    if (parentPath === null) {
-      return
+    let normalizedParentPath = null
+    if (providedParentPath !== undefined) {
+      normalizedParentPath = providedParentPath && providedParentPath.trim() ? providedParentPath.trim() : null
+    } else {
+      const parentPath = window.prompt('Parent folder path (leave empty for root):', '')
+      if (parentPath === null) {
+        return
+      }
+      normalizedParentPath = parentPath.trim() || null
     }
 
     socket.emit('tree:create', {
       roomId,
       name: trimmedName,
       nodeType,
-      parentPath: parentPath.trim() || null,
+      parentPath: normalizedParentPath,
     })
   }
 
@@ -1165,8 +1231,8 @@ export function EditorScreen() {
         onSelectFile={handleOpenFile}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-        onCreateFile={() => handleCreateNode('file')}
-        onCreateFolder={() => handleCreateNode('folder')}
+        onCreateFile={(options) => handleCreateNode('file', options)}
+        onCreateFolder={(options) => handleCreateNode('folder', options)}
       />
 
       {/* Main editor area */}
@@ -1174,10 +1240,10 @@ export function EditorScreen() {
         {/* Toolbar */}
         <Toolbar 
           onRun={handleRun} 
-          onRunStep={handleRunStep}
           onStop={handleStop} 
           onAiUpdate={handleAiUpdate}
-          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          isTerminalOpen={isTerminalOpen}
+          onToggleTerminal={() => setIsTerminalOpen((prev) => !prev)}
           isCopilotOpen={isCopilotOpen}
           onToggleCopilot={() => setIsCopilotOpen((prev) => !prev)}
         />
@@ -1328,6 +1394,9 @@ export function EditorScreen() {
             <Terminal
               output={terminalOutput}
               isOpen={isTerminalOpen}
+              height={terminalHeight}
+              isResizing={isTerminalResizing}
+              onResizeStart={handleTerminalResizeStart}
               onClose={() => setIsTerminalOpen(false)}
             />
           </div>
