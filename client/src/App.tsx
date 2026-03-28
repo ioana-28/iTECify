@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation, Link } from "react-router-dom";
 import "./App.css";
 import { EditorPage } from "./pages/EditorPage";
 import { HealthPage } from "./pages/HealthPage";
+import { HelpPage } from "./pages/HelpPage.tsx";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
@@ -40,7 +41,8 @@ function App() {
   const isHomeRoute = location.pathname === "/";
   const isLoginRoute = location.pathname === "/login";
   const isProjectsRoute = location.pathname === "/projects";
-  const hideTopbar = isHomeRoute || isLoginRoute || isProjectsRoute;
+  const isHelpRoute = location.pathname === "/help";
+  const hideTopbar = isHomeRoute || isLoginRoute || isProjectsRoute || isHelpRoute;
   const isLandingShell = isHomeRoute || isLoginRoute;
 
   return (
@@ -67,6 +69,14 @@ function App() {
             element={
               <RequireAuth>
                 <ProjectsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/help"
+            element={
+              <RequireAuth>
+                <HelpPage />
               </RequireAuth>
             }
           />
