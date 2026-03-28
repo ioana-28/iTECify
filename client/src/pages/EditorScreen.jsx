@@ -93,6 +93,8 @@ export function EditorScreen() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [isTerminalOpen, setIsTerminalOpen] = useState(false)
   const [terminalOutput, setTerminalOutput] = useState([])
+  const [terminalHeight, setTerminalHeight] = useState(240)
+  const [isTerminalResizing, setIsTerminalResizing] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
   const [rooms, setRooms] = useState([])
   const [currentRoomId, setCurrentRoomId] = useState('')
@@ -239,6 +241,54 @@ export function EditorScreen() {
 
   const addTerminalOutput = useCallback((text, type = 'info') => {
     setTerminalOutput((prev) => [...prev, { type, text }])
+  }, [])
+
+  useEffect(() => {
+    if (!isTerminalResizing) {
+      return
+    }
+
+    const minHeight = 180
+    const maxHeight = 520
+
+    const onMouseMove = (event) => {
+      const viewportHeight = window.innerHeight || 0
+      const nextHeight = Math.min(maxHeight, Math.max(minHeight, viewportHeight - event.clientY))
+      setTerminalHeight(nextHeight)
+    }
+
+    const onMouseUp = () => {
+      setIsTerminalResizing(false)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [isTerminalResizing])
+
+  useEffect(() => {
+    if (!isTerminalResizing) {
+      return
+    }
+
+    const previousSelect = document.body.style.userSelect
+    const previousCursor = document.body.style.cursor
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'ns-resize'
+
+    return () => {
+      document.body.style.userSelect = previousSelect
+      document.body.style.cursor = previousCursor
+    }
+  }, [isTerminalResizing])
+
+  const handleTerminalResizeStart = useCallback((event) => {
+    event.preventDefault()
+    setIsTerminalResizing(true)
   }, [])
 
   const requestTreeSync = useCallback(() => {
@@ -955,6 +1005,9 @@ export function EditorScreen() {
             <Terminal
               output={terminalOutput}
               isOpen={isTerminalOpen}
+              height={terminalHeight}
+              isResizing={isTerminalResizing}
+              onResizeStart={handleTerminalResizeStart}
               onClose={() => setIsTerminalOpen(false)}
             />
           </div>
