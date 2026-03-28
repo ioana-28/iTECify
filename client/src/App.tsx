@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import "./App.css";
 import { EditorPage } from "./pages/EditorPage";
 import { HealthPage } from "./pages/HealthPage";
+import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 
@@ -16,7 +17,7 @@ function hasProjectContext() {
 
 function RequireAuth({ children }: { children: ReactElement }) {
   if (!isAuthenticated()) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   return children;
@@ -24,7 +25,7 @@ function RequireAuth({ children }: { children: ReactElement }) {
 
 function RequireProjectContext({ children }: { children: ReactElement }) {
   if (!isAuthenticated()) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   if (!hasProjectContext()) {
@@ -36,13 +37,31 @@ function RequireProjectContext({ children }: { children: ReactElement }) {
 
 function App() {
   const location = useLocation();
-  const isLoginRoute = location.pathname === "/";
+  const isHomeRoute = location.pathname === "/";
+  const isLoginRoute = location.pathname === "/login";
+  const isProjectsRoute = location.pathname === "/projects";
+  const hideTopbar = isHomeRoute || isLoginRoute || isProjectsRoute;
+  const isLandingShell = isHomeRoute || isLoginRoute;
 
   return (
-    <div className={`app-shell ${isLoginRoute ? "login-shell" : ""}`}>
+    <div className={`app-shell ${isLandingShell ? "login-shell" : ""}`}>
+      {!hideTopbar && (
+        <header className="topbar">
+          <h1>iTECify</h1>
+
+          <nav>
+            <Link to="/">Home</Link>
+            <Link to="/projects">Projectpage</Link>
+            <Link to="/editor">Editor</Link>
+            <Link to="/health">Health</Link>
+          </nav>
+        </header>
+      )}
+
       <main className="app-content">
         <Routes>
-          <Route path="/" element={<LoginPage />} />
+          <Route path="/" element={<HomePage />} />
+          <Route path="/login" element={<LoginPage />} />
           <Route
             path="/projects"
             element={
