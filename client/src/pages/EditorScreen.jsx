@@ -82,6 +82,7 @@ function toFileSystemFromTree(treeMap) {
 
 export function EditorScreen() {
   const editorRef = useRef(null)
+  const monacoRef = useRef(null)
   const socketRef = useRef(null)
   const copilotInputRef = useRef(null)
   const copilotConversationEndRef = useRef(null)
@@ -94,6 +95,7 @@ export function EditorScreen() {
   const versionRef = useRef(0)
   const selectionDisposableRef = useRef(null)
   const runControllerRef = useRef(null)
+  const aiChangeDecorationIdsRef = useRef([])
   
   const [treeNodes, setTreeNodes] = useState(() => new Map())
   const fileSystem = toFileSystemFromTree(treeNodes)
@@ -115,11 +117,12 @@ export function EditorScreen() {
   const [isCopilotOpen, setIsCopilotOpen] = useState(false)
   const [copilotDraft, setCopilotDraft] = useState('')
   const [isCopilotBusy, setIsCopilotBusy] = useState(false)
+  const [pendingSuggestion, setPendingSuggestion] = useState(null)
   const [copilotMessages, setCopilotMessages] = useState([
     {
       id: 'assistant-welcome',
       role: 'assistant',
-      text: 'Hi! Ask Copilot to edit the current file and I will apply the changes directly.',
+      text: 'Hi! Ask Copilot to edit the current file. I will use the current code as context and show a preview before applying.',
     },
   ])
 
@@ -137,6 +140,16 @@ export function EditorScreen() {
     currentFilePathRef.current = currentFile?.path || ''
   }, [currentFile])
 
+  const clearAiChangeHighlights = useCallback(() => {
+    const editor = editorRef.current
+    if (!editor) {
+      aiChangeDecorationIdsRef.current = []
+      return
+    }
+
+    aiChangeDecorationIdsRef.current = editor.deltaDecorations(aiChangeDecorationIdsRef.current, [])
+  }, [])
+  
   useEffect(() => {
     setTreeNodes(new Map())
     setOpenFiles([])
@@ -145,7 +158,9 @@ export function EditorScreen() {
     codeRef.current = ''
     setCode('')
     versionRef.current = 0
-  }, [currentRoomId])
+    setPendingSuggestion(null)
+    clearAiChangeHighlights()
+  }, [clearAiChangeHighlights, currentRoomId])
 
   useEffect(() => {
     const rawAuthUser = localStorage.getItem('authUser')
@@ -248,6 +263,54 @@ export function EditorScreen() {
 
     return operations
   }, [])
+
+
+  const getLineNumberAtOffset = useCallback((content, offset) => {
+    const boundedOffset = Math.max(0, Math.min(offset, content.length))
+    let lineNumber = 1
+    for (let index = 0; index < boundedOffset; index += 1) {
+      if (content[index] === '\n') {
+        lineNumber += 1
+      }
+    }
+    return lineNumber
+  }, [])
+
+  const highlightAiChangedLines = useCallback(
+    (previousCode, nextCode) => {
+      const editor = editorRef.current
+      const monaco = monacoRef.current
+      if (!editor || !monaco) {
+        return
+      }
+
+      const operations = buildEditorOperations(previousCode, nextCode)
+      if (operations.length === 0) {
+        clearAiChangeHighlights()
+        return
+      }
+
+      const insertOperation = operations.find((operation) => operation.type === 'insert')
+      const startOffset = operations[0].pos
+      const insertedLength = insertOperation && typeof insertOperation.text === 'string' ? insertOperation.text.length : 0
+      const endOffset = insertedLength > 0 ? startOffset + insertedLength - 1 : startOffset
+
+      const startLine = getLineNumberAtOffset(nextCode, startOffset)
+      const endLine = Math.max(startLine, getLineNumberAtOffset(nextCode, endOffset))
+
+      aiChangeDecorationIdsRef.current = editor.deltaDecorations(aiChangeDecorationIdsRef.current, [
+        {
+          range: new monaco.Range(startLine, 1, endLine, 1),
+          options: {
+            isWholeLine: true,
+            className: 'editor-ai-change-highlight',
+            marginClassName: 'editor-ai-change-highlight-margin',
+          },
+        },
+      ])
+    },
+    [buildEditorOperations, clearAiChangeHighlights, getLineNumberAtOffset]
+  )
 
   const addTerminalOutput = useCallback((text, type = 'info') => {
     setTerminalOutput((prev) => [...prev, { type, text }])
@@ -523,6 +586,7 @@ export function EditorScreen() {
 
     currentFilePathRef.current = path
     requestRoomFileSync()
+    clearAiChangeHighlights()
   }
 
   const handleCreateNode = (nodeType) => {
@@ -567,12 +631,14 @@ export function EditorScreen() {
         setCurrentFile(remaining[0])
         currentFilePathRef.current = remaining[0].path
         requestRoomFileSync()
+        clearAiChangeHighlights()
       } else {
         setCurrentFile(null)
         currentFilePathRef.current = ''
         codeRef.current = ''
         setCode('')
         versionRef.current = 0
+        clearAiChangeHighlights()
       }
     }
   }
@@ -671,6 +737,141 @@ export function EditorScreen() {
     })
   }
 
+  const isExplicitFullRewriteRequest = useCallback((instruction) => {
+    const fullRewritePattern =
+      /\b(full rewrite|rewrite (the )?(entire|whole) file|replace (the )?(entire|whole) file|from scratch|start over|overwrite (the )?file)\b/i
+
+    return fullRewritePattern.test(instruction)
+  }, [])
+
+  const buildContextAwareInstruction = useCallback((instruction) => {
+    return `${instruction}
+
+Context handling requirements:
+- Use the provided current file content as primary context.
+- Preserve unrelated existing code by default.
+- Apply only the requested change in-place when possible.
+- Rewrite the entire file only if the user explicitly requests a full rewrite.`
+  }, [])
+
+  const buildSuggestionPreview = useCallback(
+    ({ baseContent, suggestedContent, instruction }) => {
+      const base = baseContent || ''
+      const suggestion = suggestedContent || ''
+
+      if (!suggestion) {
+        return ''
+      }
+
+      if (isExplicitFullRewriteRequest(instruction)) {
+        return suggestion
+      }
+
+      if (suggestion === base) {
+        return ''
+      }
+
+      let prefixLength = 0
+      while (
+        prefixLength < base.length &&
+        prefixLength < suggestion.length &&
+        base[prefixLength] === suggestion[prefixLength]
+      ) {
+        prefixLength += 1
+      }
+
+      let baseSuffix = base.length - 1
+      let suggestionSuffix = suggestion.length - 1
+      while (
+        baseSuffix >= prefixLength &&
+        suggestionSuffix >= prefixLength &&
+        base[baseSuffix] === suggestion[suggestionSuffix]
+      ) {
+        baseSuffix -= 1
+        suggestionSuffix -= 1
+      }
+
+      const changedSegment =
+        suggestionSuffix >= prefixLength ? suggestion.slice(prefixLength, suggestionSuffix + 1) : ''
+
+      return changedSegment.trim() ? changedSegment : ''
+    },
+    [isExplicitFullRewriteRequest]
+  )
+
+  const mergeSuggestedCodeWithCurrent = useCallback(
+    ({ currentContent, baseContent, suggestedContent, instruction }) => {
+      if (isExplicitFullRewriteRequest(instruction)) {
+        return { content: suggestedContent, strategy: 'full-rewrite' }
+      }
+
+      if (suggestedContent === baseContent) {
+        return { content: currentContent, strategy: 'no-change' }
+      }
+
+      if (currentContent === baseContent) {
+        return { content: suggestedContent, strategy: 'replace-from-base' }
+      }
+
+      const base = baseContent || ''
+      const suggestion = suggestedContent || ''
+      if (!suggestion.trim()) {
+        return { content: currentContent, strategy: 'no-change' }
+      }
+
+      let prefixLength = 0
+      while (
+        prefixLength < base.length &&
+        prefixLength < suggestion.length &&
+        base[prefixLength] === suggestion[prefixLength]
+      ) {
+        prefixLength += 1
+      }
+
+      let baseSuffix = base.length - 1
+      let suggestionSuffix = suggestion.length - 1
+      while (
+        baseSuffix >= prefixLength &&
+        suggestionSuffix >= prefixLength &&
+        base[baseSuffix] === suggestion[suggestionSuffix]
+      ) {
+        baseSuffix -= 1
+        suggestionSuffix -= 1
+      }
+
+      const oldSegment = baseSuffix >= prefixLength ? base.slice(prefixLength, baseSuffix + 1) : ''
+      const newSegment =
+        suggestionSuffix >= prefixLength ? suggestion.slice(prefixLength, suggestionSuffix + 1) : ''
+
+      if (oldSegment) {
+        const firstOccurrence = currentContent.indexOf(oldSegment)
+        if (firstOccurrence !== -1) {
+          const secondOccurrence = currentContent.indexOf(oldSegment, firstOccurrence + 1)
+          if (secondOccurrence === -1) {
+            const merged = `${currentContent.slice(0, firstOccurrence)}${newSegment}${currentContent.slice(firstOccurrence + oldSegment.length)}`
+            return { content: merged, strategy: 'segment-replace' }
+          }
+        }
+      }
+
+      if (newSegment.trim() && currentContent.includes(newSegment)) {
+        return { content: currentContent, strategy: 'no-change' }
+      }
+
+      const appendBlock = (newSegment || suggestion).trim()
+      if (!appendBlock) {
+        return { content: currentContent, strategy: 'no-change' }
+      }
+
+      const separator = currentContent.endsWith('\n\n') ? '' : currentContent.endsWith('\n') ? '\n' : '\n\n'
+      return {
+        content: `${currentContent}${separator}${appendBlock}`,
+        strategy: 'append-fallback',
+      }
+    },
+    [isExplicitFullRewriteRequest]
+  )
+
   const requestAiEdit = async (instruction) => {
     const trimmedInstruction = instruction.trim()
     if (!trimmedInstruction) {
@@ -692,21 +893,34 @@ export function EditorScreen() {
       setIsTerminalOpen(true)
       addTerminalOutput('Sending AI edit request...', 'info')
       const previousContent = codeRef.current
+      const contextualInstruction = buildContextAwareInstruction(trimmedInstruction)
 
       const response = await apiClient.editFileWithAi({
         content: previousContent,
-        instruction: trimmedInstruction,
+        instruction: contextualInstruction,
         language: currentFile.language || 'javascript',
       })
 
-      handleAiUpdate(response.content)
+      const previewContent = buildSuggestionPreview({
+        baseContent: previousContent,
+        suggestedContent: response.content || '',
+        instruction: trimmedInstruction,
+      })
       const hasCodeChanges = response.content !== previousContent
-      addTerminalOutput('AI edit applied successfully.', 'success')
+      setPendingSuggestion({
+        id: `suggestion-${Date.now()}`,
+        content: response.content || '',
+        previewContent,
+        baseContent: previousContent,
+        instruction: trimmedInstruction,
+        hasCodeChanges,
+      })
+      addTerminalOutput('AI suggestion ready. Review it in Copilot panel.', 'success')
       addCopilotMessage(
         'assistant',
         hasCodeChanges
-          ? 'Done. I applied the AI edit to the current file.'
-          : 'Done. AI returned the current content with no code changes.'
+          ? 'I generated a code suggestion. Review it below and choose Keep all or Undo changes.'
+          : 'I generated a suggestion with no code differences. You can still Keep all or Undo changes.'
       )
     } catch (error) {
       const message = error instanceof Error ? error.message : 'AI edit failed'
@@ -719,6 +933,61 @@ export function EditorScreen() {
 
   const handleAddAI = () => {
     setIsCopilotOpen(true)
+  }
+
+  const handleKeepAllSuggestion = () => {
+    if (!pendingSuggestion) {
+      return
+    }
+
+    if (!currentFile) {
+      addTerminalOutput('Cannot apply suggestion: no file is currently open.', 'error')
+      addCopilotMessage('assistant', 'Cannot apply suggestion: no file is currently open.')
+      return
+    }
+
+    const currentContent = codeRef.current
+    const { content: mergedContent, strategy } = mergeSuggestedCodeWithCurrent({
+      currentContent,
+      baseContent: pendingSuggestion.baseContent || '',
+      suggestedContent: pendingSuggestion.content || '',
+      instruction: pendingSuggestion.instruction || '',
+    })
+
+    if (mergedContent !== currentContent) {
+      handleAiUpdate(mergedContent)
+      setTimeout(() => {
+        highlightAiChangedLines(currentContent, mergedContent)
+      }, 0)
+    } else {
+      clearAiChangeHighlights()
+    }
+
+    if (strategy === 'full-rewrite') {
+      addTerminalOutput('AI suggestion applied as full rewrite (explicit request).', 'success')
+      addCopilotMessage('assistant', 'Applied the full-file rewrite you requested.')
+    } else if (strategy === 'append-fallback') {
+      addTerminalOutput('AI suggestion applied without replacing unrelated code.', 'success')
+      addCopilotMessage('assistant', 'Applied the suggestion safely on top of current code.')
+    } else if (strategy === 'no-change') {
+      addTerminalOutput('AI suggestion produced no new changes to apply.', 'info')
+      addCopilotMessage('assistant', 'No additional changes were applied.')
+    } else {
+      addTerminalOutput('AI suggestion merged and applied successfully.', 'success')
+      addCopilotMessage('assistant', 'Applied the suggested edit to current code without replacing the whole file.')
+    }
+
+    setPendingSuggestion(null)
+  }
+
+  const handleUndoSuggestion = () => {
+    if (!pendingSuggestion) {
+      return
+    }
+
+    setPendingSuggestion(null)
+    addTerminalOutput('AI suggestion discarded.', 'info')
+    addCopilotMessage('assistant', 'Suggestion discarded. The editor content was not changed.')
   }
 
   const handleCopilotSubmit = async (event) => {
@@ -883,8 +1152,9 @@ export function EditorScreen() {
                       language={currentFile.language || 'javascript'}
                       value={code}
                       onChange={handleEditorChange}
-                      onMount={(editor) => {
+                      onMount={(editor, monaco) => {
                         editorRef.current = editor
+                        monacoRef.current = monaco
                         if (selectionDisposableRef.current) {
                           selectionDisposableRef.current.dispose()
                         }
@@ -981,6 +1251,23 @@ export function EditorScreen() {
                   ) : null}
                   <div ref={copilotConversationEndRef} />
                 </div>
+
+                {pendingSuggestion ? (
+                  <div className="copilot-suggestion-preview">
+                    <div className="copilot-suggestion-heading">Pending suggestion</div>
+                    <pre className="copilot-suggestion-code">
+                      <code>{pendingSuggestion.previewContent || '// No code differences detected.'}</code>
+                    </pre>
+                    <div className="copilot-suggestion-actions">
+                      <button className="copilot-keep-all-btn" type="button" onClick={handleKeepAllSuggestion}>
+                        Keep all
+                      </button>
+                      <button className="copilot-undo-btn" type="button" onClick={handleUndoSuggestion}>
+                        Undo changes
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className="copilot-input-wrap">
