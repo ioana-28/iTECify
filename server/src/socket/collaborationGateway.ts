@@ -1,11 +1,41 @@
 import jwt, { type JwtPayload, type Secret } from 'jsonwebtoken'
 import type { Server, Socket } from 'socket.io'
 import { config } from '../config'
+import {
+  createRoomFileNode,
+  getRoomFileNode,
+  listRoomFileNodes,
+  type RoomFileNodeRow,
+} from '../services/roomFileNodeRepository'
+import {
+  appendFileVersion,
+  getLatestFileVersion,
+  type RoomFileVersionRow,
+} from '../services/roomFileVersionRepository'
 import { isMember } from '../services/roomRepository'
 
 type JoinPayload = {
   roomId: string
   userId: string
+  docId: string
+}
+
+type TreeSyncPayload = {
+  roomId: string
+}
+
+type TreeCreatePayload = {
+  roomId: string
+  name: string
+  nodeType: 'file' | 'folder'
+  parentPath?: string | null
+}
+
+type TreeNodeDto = {
+  path: string
+  name: string
+  type: 'file' | 'folder'
+  parentPath: string | null
 }
 
 type EditorInsertOperation = {
@@ -96,10 +126,16 @@ const RATE_LIMITS = {
   'terminal:stream': { limit: 120, windowMs: 1000 },
   'ai:propose-block': { limit: 40, windowMs: 10_000 },
   'ai:decision': { limit: 40, windowMs: 10_000 },
+  'tree:sync': { limit: 30, windowMs: 1000 },
+  'tree:create': { limit: 30, windowMs: 1000 },
 } as const
 
 const eventTimestamps = new Map<string, number[]>()
-const roomStates = new Map<string, string>()
+const roomFileStates = new Map<string, { content: string; version: number }>()
+
+function getRoomFileKey(roomId: string, docId: string): string {
+  return `${roomId}::${docId}`
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -233,8 +269,33 @@ function isJoinPayload(payload: unknown): payload is JoinPayload {
   return (
     isObject(payload) &&
     isNonEmptyString(payload.roomId) &&
-    isNonEmptyString(payload.userId)
+    isNonEmptyString(payload.userId) &&
+    isNonEmptyString(payload.docId)
   )
+}
+
+function isTreeSyncPayload(payload: unknown): payload is TreeSyncPayload {
+  return isObject(payload) && isNonEmptyString(payload.roomId)
+}
+
+function isTreeCreatePayload(payload: unknown): payload is TreeCreatePayload {
+  if (!isObject(payload)) {
+    return false
+  }
+
+  const hasRequired =
+    isNonEmptyString(payload.roomId) &&
+    isNonEmptyString(payload.name) &&
+    (payload.nodeType === 'file' || payload.nodeType === 'folder')
+  if (!hasRequired) {
+    return false
+  }
+
+  if (payload.parentPath !== undefined && payload.parentPath !== null && !isNonEmptyString(payload.parentPath)) {
+    return false
+  }
+
+  return true
 }
 
 function isEditorTextOperation(payload: unknown): payload is EditorTextOperation {
@@ -393,14 +454,47 @@ function isTerminalStreamPayload(payload: unknown): payload is TerminalStreamPay
   return true
 }
 
-function getOrCreateRoomState(roomId: string): string {
-  const current = roomStates.get(roomId)
-  if (current !== undefined) {
+function setRoomFileState(roomId: string, docId: string, content: string, version: number): void {
+  roomFileStates.set(getRoomFileKey(roomId, docId), { content, version })
+}
+
+function getRoomFileState(roomId: string, docId: string): { content: string; version: number } | null {
+  const current = roomFileStates.get(getRoomFileKey(roomId, docId))
+  return current ?? null
+}
+
+async function getOrLoadRoomFileState(
+  roomId: string,
+  docId: string,
+): Promise<{ content: string; version: number }> {
+  const current = getRoomFileState(roomId, docId)
+  if (current !== null) {
     return current
   }
 
-  roomStates.set(roomId, '')
-  return ''
+  const latest = await getLatestFileVersion(roomId, docId)
+  if (!latest) {
+    const initial = { content: '', version: 0 }
+    setRoomFileState(roomId, docId, initial.content, initial.version)
+    return initial
+  }
+
+  const loaded = { content: latest.content, version: latest.version }
+  setRoomFileState(roomId, docId, loaded.content, loaded.version)
+  return loaded
+}
+
+function applySavedRowToState(row: RoomFileVersionRow): void {
+  setRoomFileState(row.room_id, row.file_path, row.content, row.version)
+}
+
+function toTreeNodeDto(node: RoomFileNodeRow): TreeNodeDto {
+  return {
+    path: node.path,
+    name: node.name,
+    type: node.type,
+    parentPath: node.parent_path,
+  }
 }
 
 function applyEditorOperation(
@@ -512,55 +606,178 @@ export function registerCollaborationGateway(io: Server): void {
 
   io.on('connection', (socket) => {
     socket.on('room:join', async (payload: unknown) => {
-      if (!isJoinPayload(payload)) {
-        emitGatewayError(socket, 'room:join', 'INVALID_PAYLOAD', 'Invalid room:join payload.')
-        return
+      try {
+        if (!isJoinPayload(payload)) {
+          emitGatewayError(socket, 'room:join', 'INVALID_PAYLOAD', 'Invalid room:join payload.')
+          return
+        }
+
+        if (!(await authorizeRoomAction(socket, payload.roomId, 'room:join'))) {
+          emitGatewayError(socket, 'room:join', 'UNAUTHORIZED', 'Not authorized to join this room.')
+          return
+        }
+
+        const fileNode = await getRoomFileNode(payload.roomId, payload.docId)
+        if (!fileNode || fileNode.type !== 'file') {
+          emitGatewayError(socket, 'room:join', 'INVALID_OPERATION', 'Target file does not exist.')
+          return
+        }
+
+        const alreadyJoined = hasJoinedRoom(socket, payload.roomId)
+        socket.join(payload.roomId)
+        markRoomAsJoined(socket, payload.roomId)
+        const latestState = await getOrLoadRoomFileState(payload.roomId, payload.docId)
+
+        socket.emit('room:state-sync', {
+          roomId: payload.roomId,
+          filePath: payload.docId,
+          content: latestState.content,
+          baseVersion: latestState.version,
+        })
+
+        if (!alreadyJoined) {
+          io.to(payload.roomId).emit('room:user-joined', {
+            roomId: payload.roomId,
+            userId: payload.userId,
+          })
+        }
+      } catch (error) {
+        console.error('[socket][room:join] Failed to load room file state:', error)
+        emitGatewayError(socket, 'room:join', 'INVALID_OPERATION', 'Failed to load room file state.')
       }
+    })
 
-      if (!(await authorizeRoomAction(socket, payload.roomId, 'room:join'))) {
-        emitGatewayError(socket, 'room:join', 'UNAUTHORIZED', 'Not authorized to join this room.')
-        return
+    socket.on('tree:sync', async (payload: unknown) => {
+      try {
+        if (!isTreeSyncPayload(payload)) {
+          emitGatewayError(socket, 'tree:sync', 'INVALID_PAYLOAD', 'Invalid tree:sync payload.')
+          return
+        }
+
+        if (!(await authorizeRoomAction(socket, payload.roomId, 'tree:sync'))) {
+          emitGatewayError(socket, 'tree:sync', 'UNAUTHORIZED', 'Not authorized to load this tree.')
+          return
+        }
+
+        if (wasRateLimitExceeded(socket, 'tree:sync')) {
+          emitGatewayError(socket, 'tree:sync', 'RATE_LIMITED', 'Rate limit exceeded for tree:sync.')
+          return
+        }
+
+        const alreadyJoined = hasJoinedRoom(socket, payload.roomId)
+        if (!alreadyJoined) {
+          socket.join(payload.roomId)
+          markRoomAsJoined(socket, payload.roomId)
+        }
+
+        const nodes = await listRoomFileNodes(payload.roomId)
+        socket.emit('tree:state-sync', {
+          roomId: payload.roomId,
+          nodes: nodes.map(toTreeNodeDto),
+        })
+      } catch (error) {
+        console.error('[socket][tree:sync] Failed to load tree:', error)
+        emitGatewayError(socket, 'tree:sync', 'INVALID_OPERATION', 'Failed to load file tree.')
       }
+    })
 
-      socket.join(payload.roomId)
-      markRoomAsJoined(socket, payload.roomId)
-      const latestContent = getOrCreateRoomState(payload.roomId)
+    socket.on('tree:create', async (payload: unknown) => {
+      try {
+        if (!isTreeCreatePayload(payload)) {
+          emitGatewayError(socket, 'tree:create', 'INVALID_PAYLOAD', 'Invalid tree:create payload.')
+          return
+        }
 
-      socket.emit('room:state-sync', {
-        roomId: payload.roomId,
-        content: latestContent,
-      })
+        if (!(await authorizeRoomAction(socket, payload.roomId, 'tree:create'))) {
+          emitGatewayError(socket, 'tree:create', 'UNAUTHORIZED', 'Not authorized to modify this tree.')
+          return
+        }
 
-      io.to(payload.roomId).emit('room:user-joined', {
-        roomId: payload.roomId,
-        userId: payload.userId,
-      })
+        if (wasRateLimitExceeded(socket, 'tree:create')) {
+          emitGatewayError(socket, 'tree:create', 'RATE_LIMITED', 'Rate limit exceeded for tree:create.')
+          return
+        }
+
+        const alreadyJoined = hasJoinedRoom(socket, payload.roomId)
+        if (!alreadyJoined) {
+          socket.join(payload.roomId)
+          markRoomAsJoined(socket, payload.roomId)
+        }
+
+        const authenticatedUserId = socket.data.userId as number | undefined
+        if (!authenticatedUserId || !Number.isSafeInteger(authenticatedUserId) || authenticatedUserId <= 0) {
+          emitGatewayError(socket, 'tree:create', 'UNAUTHORIZED', 'Authenticated user is required.')
+          return
+        }
+
+        const createdNode = await createRoomFileNode({
+          roomId: payload.roomId,
+          name: payload.name,
+          type: payload.nodeType,
+          parentPath: payload.parentPath ?? null,
+          createdByUserId: authenticatedUserId,
+        })
+
+        io.to(payload.roomId).emit('tree:node-created', {
+          roomId: payload.roomId,
+          node: toTreeNodeDto(createdNode),
+        })
+      } catch (error) {
+        console.error('[socket][tree:create] Failed to create node:', error)
+        const message = error instanceof Error ? error.message : 'Failed to create file tree node.'
+        emitGatewayError(socket, 'tree:create', 'INVALID_OPERATION', message)
+      }
     })
 
     socket.on('editor:change', async (payload: unknown) => {
-      if (!isEditorChangePayload(payload)) {
-        emitGatewayError(
-          socket,
-          'editor:change',
-          'INVALID_PAYLOAD',
-          'Invalid editor:change payload.',
-        )
-        return
-      }
+      try {
+        if (!isEditorChangePayload(payload)) {
+          emitGatewayError(
+            socket,
+            'editor:change',
+            'INVALID_PAYLOAD',
+            'Invalid editor:change payload.',
+          )
+          return
+        }
 
-      if (!(await enforceEventAccess(socket, payload.roomId, 'editor:change'))) {
-        return
-      }
+        if (!(await enforceEventAccess(socket, payload.roomId, 'editor:change'))) {
+          return
+        }
 
-      const currentContent = getOrCreateRoomState(payload.roomId)
-      const updatedState = applyEditorOperation(currentContent, payload.op)
-      if (!updatedState.ok) {
-        emitGatewayError(socket, 'editor:change', 'INVALID_OPERATION', updatedState.message)
-        return
-      }
+        const currentState = await getOrLoadRoomFileState(payload.roomId, payload.docId)
+        const updatedState = applyEditorOperation(currentState.content, payload.op)
+        if (!updatedState.ok) {
+          emitGatewayError(socket, 'editor:change', 'INVALID_OPERATION', updatedState.message)
+          return
+        }
 
-      roomStates.set(payload.roomId, updatedState.nextContent)
-      socket.to(payload.roomId).emit('editor:patch', payload)
+        const authenticatedUserId = socket.data.userId as number | undefined
+        if (!authenticatedUserId || !Number.isSafeInteger(authenticatedUserId) || authenticatedUserId <= 0) {
+          emitGatewayError(socket, 'editor:change', 'UNAUTHORIZED', 'Authenticated user is required.')
+          return
+        }
+
+        const saved = await appendFileVersion({
+          roomId: payload.roomId,
+          filePath: payload.docId,
+          content: updatedState.nextContent,
+          updatedByUserId: authenticatedUserId,
+          opId: payload.opId,
+        })
+        applySavedRowToState(saved.row)
+        if (!saved.inserted) {
+          return
+        }
+
+        io.to(payload.roomId).emit('editor:patch', {
+          ...payload,
+          baseVersion: saved.row.version - 1,
+        })
+      } catch (error) {
+        console.error('[socket][editor:change] Failed to persist editor change:', error)
+        emitGatewayError(socket, 'editor:change', 'INVALID_OPERATION', 'Failed to persist editor change.')
+      }
     })
 
     socket.on('cursor:move', async (payload: unknown) => {

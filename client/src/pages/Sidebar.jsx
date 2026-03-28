@@ -1,7 +1,14 @@
 import { useState } from 'react'
 import '../style/Sidebar.css'
 
-export const Sidebar = ({ fileSystem, onSelectFile, sidebarOpen, onToggleSidebar }) => {
+export const Sidebar = ({
+  fileSystem,
+  onSelectFile,
+  sidebarOpen,
+  onToggleSidebar,
+  onCreateFile,
+  onCreateFolder,
+}) => {
   const [expandedFolders, setExpandedFolders] = useState(new Set(['src']))
 
   const toggleFolder = (path) => {
@@ -77,6 +84,14 @@ export const Sidebar = ({ fileSystem, onSelectFile, sidebarOpen, onToggleSidebar
         <aside className="sidebar">
           <div className="sidebar-header">
             <span>Explorer</span>
+            <div className="sidebar-actions">
+              <button className="sidebar-action-btn" onClick={onCreateFile} title="Create file">
+                +F
+              </button>
+              <button className="sidebar-action-btn" onClick={onCreateFolder} title="Create folder">
+                +D
+              </button>
+            </div>
           </div>
           <div className="sidebar-section">
             <div className="section-title">PROJECT</div>

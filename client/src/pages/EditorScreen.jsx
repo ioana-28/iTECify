@@ -9,57 +9,98 @@ import { createCollabSocket } from '../services/socket'
 import { apiClient } from '../services/api'
 import '../style/Editor.css'
 
+function toTreeMap(nodes) {
+  const map = new Map()
+  ;(nodes || []).forEach((node) => {
+    if (!node || typeof node.path !== 'string') {
+      return
+    }
+
+    map.set(node.path, {
+      path: node.path,
+      name: typeof node.name === 'string' && node.name ? node.name : node.path.split('/').pop() || node.path,
+      type: node.type === 'folder' ? 'folder' : 'file',
+      parentPath: typeof node.parentPath === 'string' && node.parentPath ? node.parentPath : null,
+    })
+  })
+
+  return map
+}
+
+function getLanguageFromPath(path) {
+  if (path.endsWith('.js') || path.endsWith('.jsx')) return 'javascript'
+  if (path.endsWith('.css')) return 'css'
+  if (path.endsWith('.json')) return 'json'
+  if (path.endsWith('.html')) return 'html'
+  if (path.endsWith('.md')) return 'markdown'
+  if (path.endsWith('.py')) return 'python'
+  if (path.endsWith('.rs')) return 'rust'
+  if (path.endsWith('.c')) return 'c'
+  if (path.endsWith('.cpp') || path.endsWith('.cc') || path.endsWith('.cxx')) return 'cpp'
+  return 'plaintext'
+}
+
+function toFileSystemFromTree(treeMap) {
+  const root = {}
+  const nodes = Array.from(treeMap.values()).sort((a, b) => a.path.localeCompare(b.path))
+
+  for (const node of nodes) {
+    const parts = node.path.split('/').filter(Boolean)
+    if (parts.length === 0) {
+      continue
+    }
+
+    let cursor = root
+    for (let i = 0; i < parts.length; i += 1) {
+      const part = parts[i]
+      const isLeaf = i === parts.length - 1
+
+      if (!isLeaf) {
+        if (!cursor[part] || cursor[part].type !== 'folder') {
+          cursor[part] = { type: 'folder', files: {} }
+        }
+        cursor = cursor[part].files
+        continue
+      }
+
+      if (node.type === 'folder') {
+        if (!cursor[part] || cursor[part].type !== 'folder') {
+          cursor[part] = { type: 'folder', files: {} }
+        }
+      } else {
+        cursor[part] = {
+          type: 'file',
+          language: getLanguageFromPath(node.path),
+          content: '',
+        }
+      }
+    }
+  }
+
+  return root
+}
+
 export function EditorScreen() {
   const editorRef = useRef(null)
   const socketRef = useRef(null)
+  const copilotInputRef = useRef(null)
+  const copilotConversationEndRef = useRef(null)
   const roomIdRef = useRef('')
   const userIdRef = useRef(`user-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`)
   const isRemoteChangeRef = useRef(false)
   const remoteCursorsRef = useRef(new Map())
   const codeRef = useRef('')
-  const currentFilePathRef = useRef('src/App.jsx')
+  const currentFilePathRef = useRef('')
   const versionRef = useRef(0)
   const selectionDisposableRef = useRef(null)
   const runControllerRef = useRef(null)
   
-  // File system structure
-  const [fileSystem] = useState({
-    'src': {
-      type: 'folder',
-      files: {
-        'index.js': { type: 'file', language: 'javascript', content: '' },
-        'App.jsx': { type: 'file', language: 'javascript', content: '' },
-        'styles': {
-          type: 'folder',
-          files: {
-            'main.css': { type: 'file', language: 'css', content: '' },
-            'variables.css': { type: 'file', language: 'css', content: '' }
-          }
-        },
-        'components': {
-          type: 'folder',
-          files: {
-            'Header.jsx': { type: 'file', language: 'javascript', content: '' },
-            'Footer.jsx': { type: 'file', language: 'javascript', content: '' }
-          }
-        }
-      }
-    },
-    'public': {
-      type: 'folder',
-      files: {
-        'index.html': { type: 'file', language: 'html', content: '' }
-      }
-    },
-    'package.json': { type: 'file', language: 'json', content: '' },
-    'README.md': { type: 'file', language: 'markdown', content: '' }
-  })
+  const [treeNodes, setTreeNodes] = useState(() => new Map())
+  const fileSystem = toFileSystemFromTree(treeNodes)
 
-  const [openFiles, setOpenFiles] = useState([
-    { id: 1, name: 'App.jsx', path: 'src/App.jsx', language: 'javascript', active: true }
-  ])
+  const [openFiles, setOpenFiles] = useState([])
   
-  const [currentFile, setCurrentFile] = useState(openFiles[0])
+  const [currentFile, setCurrentFile] = useState(null)
   const [code, setCode] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [isTerminalOpen, setIsTerminalOpen] = useState(false)
@@ -72,6 +113,15 @@ export function EditorScreen() {
   const [roomError, setRoomError] = useState('')
   const [isRoomBusy, setIsRoomBusy] = useState(false)
   const [isCopilotOpen, setIsCopilotOpen] = useState(false)
+  const [copilotDraft, setCopilotDraft] = useState('')
+  const [isCopilotBusy, setIsCopilotBusy] = useState(false)
+  const [copilotMessages, setCopilotMessages] = useState([
+    {
+      id: 'assistant-welcome',
+      role: 'assistant',
+      text: 'Hi! Ask Copilot to edit the current file and I will apply the changes directly.',
+    },
+  ])
 
   const currentRoom = rooms.find((room) => room.id === currentRoomId) || null
 
@@ -88,6 +138,16 @@ export function EditorScreen() {
   }, [currentFile])
 
   useEffect(() => {
+    setTreeNodes(new Map())
+    setOpenFiles([])
+    setCurrentFile(null)
+    currentFilePathRef.current = ''
+    codeRef.current = ''
+    setCode('')
+    versionRef.current = 0
+  }, [currentRoomId])
+
+  useEffect(() => {
     const rawAuthUser = localStorage.getItem('authUser')
     if (rawAuthUser) {
       try {
@@ -100,6 +160,22 @@ export function EditorScreen() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (!isCopilotOpen || !copilotInputRef.current) {
+      return
+    }
+
+    copilotInputRef.current.focus()
+  }, [isCopilotOpen])
+
+  useEffect(() => {
+    if (!copilotConversationEndRef.current) {
+      return
+    }
+
+    copilotConversationEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [copilotMessages, isCopilotBusy])
 
   useEffect(() => {
     loadRooms().catch((error) => {
@@ -177,6 +253,42 @@ export function EditorScreen() {
     setTerminalOutput((prev) => [...prev, { type, text }])
   }, [])
 
+  const requestTreeSync = useCallback(() => {
+    const socket = socketRef.current
+    const roomId = roomIdRef.current
+    if (!socket || !roomId) {
+      return
+    }
+
+    socket.emit('tree:sync', { roomId })
+  }, [])
+
+  const requestRoomFileSync = useCallback(() => {
+    const socket = socketRef.current
+    const roomId = roomIdRef.current
+    const docId = currentFilePathRef.current
+    if (!socket || !roomId || !docId) {
+      return
+    }
+
+    socket.emit('room:join', {
+      roomId,
+      userId: userIdRef.current,
+      docId,
+    })
+  }, [])
+
+  const addCopilotMessage = useCallback((role, text) => {
+    setCopilotMessages((prev) => [
+      ...prev,
+      {
+        id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        role,
+        text,
+      },
+    ])
+  }, [])
+
   const applyRemoteCodeUpdate = useCallback((nextCode) => {
     isRemoteChangeRef.current = true
     codeRef.current = nextCode
@@ -196,10 +308,8 @@ export function EditorScreen() {
     socketRef.current = socket
 
     const emitRoomJoin = () => {
-      socket.emit('room:join', {
-        roomId: roomIdRef.current,
-        userId: userIdRef.current,
-      })
+      requestTreeSync()
+      requestRoomFileSync()
     }
 
     socket.on('connect', emitRoomJoin)
@@ -208,7 +318,12 @@ export function EditorScreen() {
     }
 
     const handleStateSync = (payload) => {
-      if (!payload || payload.roomId !== roomIdRef.current || typeof payload.content !== 'string') {
+      if (
+        !payload ||
+        payload.roomId !== roomIdRef.current ||
+        payload.filePath !== currentFilePathRef.current ||
+        typeof payload.content !== 'string'
+      ) {
         return
       }
 
@@ -220,8 +335,108 @@ export function EditorScreen() {
       applyRemoteCodeUpdate(payload.content)
     }
 
+    const handleTreeStateSync = (payload) => {
+      if (!payload || payload.roomId !== roomIdRef.current || !Array.isArray(payload.nodes)) {
+        return
+      }
+
+      const nextTree = toTreeMap(payload.nodes)
+      setTreeNodes(nextTree)
+
+      const filePaths = Array.from(nextTree.values())
+        .filter((node) => node.type === 'file')
+        .map((node) => node.path)
+      if (filePaths.length === 0) {
+        setOpenFiles([])
+        setCurrentFile(null)
+        currentFilePathRef.current = ''
+        codeRef.current = ''
+        setCode('')
+        versionRef.current = 0
+        return
+      }
+
+      const filePathSet = new Set(filePaths)
+      setOpenFiles((prev) =>
+        prev
+          .filter((file) => filePathSet.has(file.path))
+          .map((file) => ({
+            ...file,
+            id: file.path,
+            name: file.path.split('/').pop() || file.name,
+            language: getLanguageFromPath(file.path),
+          })),
+      )
+
+      if (!currentFilePathRef.current || !filePathSet.has(currentFilePathRef.current)) {
+        const nextPath = filePaths[0]
+        const nextFile = {
+          id: nextPath,
+          name: nextPath.split('/').pop() || nextPath,
+          path: nextPath,
+          language: getLanguageFromPath(nextPath),
+          active: true,
+        }
+        setCurrentFile(nextFile)
+        currentFilePathRef.current = nextPath
+        requestRoomFileSync()
+      }
+    }
+
+    const handleTreeNodeCreated = (payload) => {
+      if (!payload || payload.roomId !== roomIdRef.current || !payload.node || typeof payload.node.path !== 'string') {
+        return
+      }
+
+      setTreeNodes((prev) => {
+        const next = new Map(prev)
+        next.set(payload.node.path, {
+          path: payload.node.path,
+          name: payload.node.name,
+          type: payload.node.type,
+          parentPath: payload.node.parentPath ?? null,
+        })
+        return next
+      })
+
+      if (payload.node.type === 'file') {
+        const language = getLanguageFromPath(payload.node.path)
+        const newFile = {
+          id: payload.node.path,
+          name: payload.node.name,
+          path: payload.node.path,
+          language,
+          active: true,
+        }
+
+        setOpenFiles((prev) => {
+          if (prev.some((file) => file.path === newFile.path)) {
+            return prev
+          }
+          return [...prev, newFile]
+        })
+        setCurrentFile(newFile)
+        currentFilePathRef.current = newFile.path
+        requestRoomFileSync()
+      }
+    }
+
+    const handleSocketError = (payload) => {
+      if (!payload || typeof payload.message !== 'string' || typeof payload.event !== 'string') {
+        return
+      }
+
+      addTerminalOutput(`${payload.event}: ${payload.message}`, 'warning')
+      setIsTerminalOpen(true)
+    }
+
     const handleEditorPatch = (payload) => {
-      if (!payload || payload.roomId !== roomIdRef.current || !payload.op) {
+      if (
+        !payload ||
+        payload.roomId !== roomIdRef.current ||
+        payload.docId !== currentFilePathRef.current ||
+        !payload.op
+      ) {
         return
       }
 
@@ -262,6 +477,9 @@ export function EditorScreen() {
     }
 
     socket.on('room:state-sync', handleStateSync)
+    socket.on('tree:state-sync', handleTreeStateSync)
+    socket.on('tree:node-created', handleTreeNodeCreated)
+    socket.on('socket:error', handleSocketError)
     socket.on('editor:patch', handleEditorPatch)
     socket.on('terminal:output', handleTerminalOutput)
     socket.on('cursor:update', handleCursorUpdate)
@@ -274,13 +492,16 @@ export function EditorScreen() {
 
       socket.off('connect', emitRoomJoin)
       socket.off('room:state-sync', handleStateSync)
+      socket.off('tree:state-sync', handleTreeStateSync)
+      socket.off('tree:node-created', handleTreeNodeCreated)
+      socket.off('socket:error', handleSocketError)
       socket.off('editor:patch', handleEditorPatch)
       socket.off('terminal:output', handleTerminalOutput)
       socket.off('cursor:update', handleCursorUpdate)
       socket.disconnect()
       socketRef.current = null
     }
-  }, [addTerminalOutput, applyRemoteCodeUpdate, applyTextOperation, currentRoomId])
+  }, [addTerminalOutput, applyRemoteCodeUpdate, applyTextOperation, currentRoomId, requestRoomFileSync, requestTreeSync])
 
   const handleOpenFile = (name, path, language) => {
     // Check if file is already open
@@ -290,7 +511,7 @@ export function EditorScreen() {
     } else {
       // Add new file
       const newFile = {
-        id: Date.now(),
+        id: path,
         name,
         path,
         language,
@@ -299,17 +520,59 @@ export function EditorScreen() {
       setOpenFiles(prev => [...prev, newFile])
       setCurrentFile(newFile)
     }
+
+    currentFilePathRef.current = path
+    requestRoomFileSync()
+  }
+
+  const handleCreateNode = (nodeType) => {
+    const socket = socketRef.current
+    const roomId = roomIdRef.current
+    if (!socket || !roomId) {
+      addTerminalOutput('Create failed: connect to a room first.', 'warning')
+      return
+    }
+
+    const defaultName = nodeType === 'folder' ? 'new-folder' : 'new-file.js'
+    const name = window.prompt(`Enter ${nodeType} name:`, defaultName)
+    if (name === null) {
+      return
+    }
+
+    const trimmedName = name.trim()
+    if (!trimmedName) {
+      addTerminalOutput('Create failed: name is required.', 'warning')
+      return
+    }
+
+    const parentPath = window.prompt('Parent folder path (leave empty for root):', '')
+    if (parentPath === null) {
+      return
+    }
+
+    socket.emit('tree:create', {
+      roomId,
+      name: trimmedName,
+      nodeType,
+      parentPath: parentPath.trim() || null,
+    })
   }
 
   const handleCloseFile = (fileId) => {
     setOpenFiles(prev => prev.filter(f => f.id !== fileId))
     
-    if (currentFile.id === fileId) {
+    if (currentFile?.id === fileId) {
       const remaining = openFiles.filter(f => f.id !== fileId)
       if (remaining.length > 0) {
         setCurrentFile(remaining[0])
+        currentFilePathRef.current = remaining[0].path
+        requestRoomFileSync()
       } else {
         setCurrentFile(null)
+        currentFilePathRef.current = ''
+        codeRef.current = ''
+        setCode('')
+        versionRef.current = 0
       }
     }
   }
@@ -377,41 +640,100 @@ export function EditorScreen() {
     }
   }
 
-  const handleAddAI = async () => {
-    const instruction = window.prompt('Describe what changes you want in the current file:')
-    if (instruction === null) {
+  const handleAiUpdate = (newFullCode) => {
+    const nextCode = newFullCode || ''
+    const previousCode = codeRef.current
+    if (previousCode === nextCode) {
       return
     }
 
+    codeRef.current = nextCode
+    setCode(nextCode)
+
+    const socket = socketRef.current
+    if (!socket || !currentFilePathRef.current || !roomIdRef.current) {
+      return
+    }
+
+    const operations = buildEditorOperations(previousCode, nextCode)
+    operations.forEach((op, index) => {
+      const payload = {
+        roomId: roomIdRef.current,
+        docId: currentFilePathRef.current,
+        userId: userIdRef.current,
+        baseVersion: versionRef.current,
+        opId: `${userIdRef.current}-${Date.now()}-${index}`,
+        op,
+      }
+
+      socket.emit('editor:change', payload)
+      versionRef.current += 1
+    })
+  }
+
+  const requestAiEdit = async (instruction) => {
     const trimmedInstruction = instruction.trim()
     if (!trimmedInstruction) {
       setIsTerminalOpen(true)
       addTerminalOutput('AI edit cancelled: instruction is required.', 'warning')
+      addCopilotMessage('assistant', 'Please enter a request before sending.')
       return
     }
 
     if (!currentFile) {
       setIsTerminalOpen(true)
       addTerminalOutput('AI edit failed: no file is currently open.', 'error')
+      addCopilotMessage('assistant', 'AI edit failed: no file is currently open.')
       return
     }
 
     try {
+      setIsCopilotBusy(true)
       setIsTerminalOpen(true)
       addTerminalOutput('Sending AI edit request...', 'info')
+      const previousContent = codeRef.current
 
       const response = await apiClient.editFileWithAi({
-        content: codeRef.current,
+        content: previousContent,
         instruction: trimmedInstruction,
         language: currentFile.language || 'javascript',
       })
 
-      applyRemoteCodeUpdate(response.content)
+      handleAiUpdate(response.content)
+      const hasCodeChanges = response.content !== previousContent
       addTerminalOutput('AI edit applied successfully.', 'success')
+      addCopilotMessage(
+        'assistant',
+        hasCodeChanges
+          ? 'Done. I applied the AI edit to the current file.'
+          : 'Done. AI returned the current content with no code changes.'
+      )
     } catch (error) {
       const message = error instanceof Error ? error.message : 'AI edit failed'
       addTerminalOutput(`AI edit failed: ${message}`, 'error')
+      addCopilotMessage('assistant', `AI edit failed: ${message}`)
+    } finally {
+      setIsCopilotBusy(false)
     }
+  }
+
+  const handleAddAI = () => {
+    setIsCopilotOpen(true)
+  }
+
+  const handleCopilotSubmit = async (event) => {
+    event.preventDefault()
+
+    if (isCopilotBusy) {
+      return
+    }
+
+    const instruction = copilotDraft
+    setCopilotDraft('')
+    if (instruction.trim()) {
+      addCopilotMessage('user', instruction.trim())
+    }
+    await requestAiEdit(instruction)
   }
 
   const handleCreateRoom = async () => {
@@ -460,32 +782,7 @@ export function EditorScreen() {
       return
     }
 
-    const previousCode = codeRef.current
-    if (previousCode === nextCode) {
-      return
-    }
-    codeRef.current = nextCode
-    setCode(nextCode)
-
-    const socket = socketRef.current
-    if (!socket || !currentFilePathRef.current || !roomIdRef.current) {
-      return
-    }
-
-    const operations = buildEditorOperations(previousCode, nextCode)
-    operations.forEach((op, index) => {
-      const payload = {
-        roomId: roomIdRef.current,
-        docId: currentFilePathRef.current,
-        userId: userIdRef.current,
-        baseVersion: versionRef.current,
-        opId: `${userIdRef.current}-${Date.now()}-${index}`,
-        op,
-      }
-
-      socket.emit('editor:change', payload)
-      versionRef.current += 1
-    })
+    handleAiUpdate(nextCode)
   }
 
   return (
@@ -496,6 +793,8 @@ export function EditorScreen() {
         onSelectFile={handleOpenFile}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+        onCreateFile={() => handleCreateNode('file')}
+        onCreateFolder={() => handleCreateNode('folder')}
       />
 
       {/* Main editor area */}
@@ -505,7 +804,7 @@ export function EditorScreen() {
           onRun={handleRun} 
           onRunStep={handleRunStep}
           onStop={handleStop} 
-          onAddAI={handleAddAI}
+          onAiUpdate={handleAiUpdate}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           isCopilotOpen={isCopilotOpen}
           onToggleCopilot={() => setIsCopilotOpen((prev) => !prev)}
@@ -567,7 +866,11 @@ export function EditorScreen() {
               <EditorTabs 
                 files={openFiles} 
                 currentFile={currentFile}
-                onSelectFile={(file) => setCurrentFile(file)}
+                onSelectFile={(file) => {
+                  setCurrentFile(file)
+                  currentFilePathRef.current = file.path
+                  requestRoomFileSync()
+                }}
                 onCloseFile={handleCloseFile}
               />
 
@@ -662,42 +965,43 @@ export function EditorScreen() {
                   onClick={() => setIsCopilotOpen(false)}
                   title="Close Copilot panel"
                 >
-                  ✕
+                  Γ£ò
                 </button>
               </div>
 
               <div className="copilot-body">
-                <div className="copilot-suggestion-card">
-                  <h4>Quick suggestion</h4>
-                  <p>Improve your runtime logs and include context metadata for easier debugging.</p>
-                  <button className="copilot-primary-action">Generate better logging</button>
-                </div>
-
-                <div className="copilot-suggestion-card">
-                  <h4>Assistant note</h4>
-                  <p>I can help outline refactors for this file and suggest safer incremental changes.</p>
-                  <div className="copilot-chip-group">
-                    <button className="copilot-chip">Apply code</button>
-                    <button className="copilot-chip">Refactor</button>
-                    <button className="copilot-chip">Suggest changes</button>
-                  </div>
-                </div>
-
                 <div className="copilot-conversation">
-                  <div className="copilot-msg assistant">
-                    Hi! I am ready when you are. Ask for explanations, cleanup ideas, or testing suggestions.
-                  </div>
-                  <div className="copilot-msg user">Can you help improve readability in this file?</div>
+                  {copilotMessages.map((message) => (
+                    <div key={message.id} className={`copilot-msg ${message.role}`}>
+                      {message.text}
+                    </div>
+                  ))}
+                  {isCopilotBusy ? (
+                    <div className="copilot-msg assistant">Working on your request...</div>
+                  ) : null}
+                  <div ref={copilotConversationEndRef} />
                 </div>
               </div>
 
               <div className="copilot-input-wrap">
-                <input
-                  className="copilot-input"
-                  type="text"
-                  placeholder="Ask Copilot..."
-                  readOnly
-                />
+                <form className="copilot-input-form" onSubmit={handleCopilotSubmit}>
+                  <input
+                    ref={copilotInputRef}
+                    className="copilot-input"
+                    type="text"
+                    placeholder="Ask Copilot..."
+                    value={copilotDraft}
+                    onChange={(event) => setCopilotDraft(event.target.value)}
+                    disabled={isCopilotBusy}
+                  />
+                  <button
+                    className="copilot-send-btn"
+                    type="submit"
+                    disabled={isCopilotBusy || !copilotDraft.trim()}
+                  >
+                    Send
+                  </button>
+                </form>
               </div>
             </aside>
           ) : null}
