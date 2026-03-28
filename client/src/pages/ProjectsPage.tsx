@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import logo from "../assets/logo.png";
 import "../style/ProjectsPage.css";
 
 type RecentProject = {
@@ -11,14 +12,6 @@ type WorkspaceAction = {
   title: string;
   subtitle: string;
   icon: string;
-};
-
-type InsightCard = {
-  id: string;
-  title: string;
-  description: string;
-  icon: string;
-  caption: string;
 };
 
 const recentProjects: RecentProject[] = [
@@ -34,37 +27,6 @@ const workspaceActions: WorkspaceAction[] = [
   { id: "continue-working", title: "Continue Working", subtitle: "Pick up right where you left off", icon: "↻" },
 ];
 
-const insightCards: InsightCard[] = [
-  {
-    id: "recent-projects",
-    title: "Recent Projects",
-    description: "Quickly jump back into your latest ideas and keep shipping.",
-    icon: "✦",
-    caption: "3 active workspaces",
-  },
-  {
-    id: "team-collaboration",
-    title: "Team Collaboration",
-    description: "Share sessions, review changes, and build together in real time.",
-    icon: "❉",
-    caption: "2 teammates online",
-  },
-  {
-    id: "ai-assistant",
-    title: "AI Assistant",
-    description: "Generate code, debug faster, and refine solutions instantly.",
-    icon: "✧",
-    caption: "Ready to assist",
-  },
-  {
-    id: "focus-flow",
-    title: "Focus Flow",
-    description: "Stay organized with smooth transitions from planning to editing.",
-    icon: "✿",
-    caption: "Calm productivity mode",
-  },
-];
-
 export function ProjectsPage() {
   const navigate = useNavigate();
 
@@ -78,18 +40,26 @@ export function ProjectsPage() {
     navigate("/");
   };
 
+  const handleHelp = () => {
+    navigate("/help");
+  };
+
   return (
     <section className="projects-page">
       <div className="projects-topbar">
+        <button type="button" className="help-btn" onClick={handleHelp} aria-label="Open help page">
+          ?
+        </button>
         <button type="button" className="logout-btn" onClick={handleLogout}>
           Logout
         </button>
       </div>
 
       <div className="projects-shell">
-        <div className="projects-left soft-panel">
+        <div className="projects-right soft-panel projects-right-full">
           <div className="left-intro">
-            <h1>iTECify</h1>
+            <img className="projects-logo" src={logo} alt="iTECify logo" />
+          
             <p>Welcome back. Build, collaborate, and launch ideas with your team.</p>
           </div>
 
@@ -130,30 +100,13 @@ export function ProjectsPage() {
           </div>
         </div>
 
-        <div className="projects-right soft-panel">
-          <div className="right-intro">
-            <h2>Workspace Highlights</h2>
-            <p>A calm dashboard designed for creative coding and smooth collaboration.</p>
-          </div>
+       
 
-          <div className="insight-grid">
-            {insightCards.map((card) => (
-              <article key={card.id} className="insight-card">
-                <span className="insight-icon" aria-hidden="true">
-                  {card.icon}
-                </span>
-                <h3>{card.title}</h3>
-                <p>{card.description}</p>
-                <span className="insight-caption">{card.caption}</span>
-              </article>
-            ))}
-          </div>
+          
 
-          <button type="button" className="launch-project" onClick={openWorkspace}>
-            Create and Launch Project
-          </button>
+          
         </div>
-      </div>
+   
     </section>
   );
 }
