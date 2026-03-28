@@ -5,7 +5,6 @@ export const Toolbar = ({
   onRun,
   onRunStep,
   onStop,
-  onAddAI,
   onAiUpdate: _onAiUpdate,
   onToggleSidebar,
   isCopilotOpen,
@@ -41,13 +40,6 @@ export const Toolbar = ({
           title="Stop (Shift+F5)"
         >
           ⏹ Stop
-        </button>
-        <button
-          className="toolbar-btn ai"
-          onClick={onAddAI}
-          title="AI Assistant (Ctrl+Shift+A)"
-        >
-          ✨ AI
         </button>
       </div>
 

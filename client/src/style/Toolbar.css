@@ -120,7 +120,7 @@
 }
 
 .toolbar-logout-btn {
-  background: #a78bfa;
+  background: #5b21b6;
   color: #ffffff;
   border-radius: 8px;
   padding: 6px 14px;
@@ -132,7 +132,7 @@
 }
 
 .toolbar-logout-btn:hover {
-  background: #8b5cf6;
+  background: #4c1d95;
   transform: scale(1.05);
 }
 
