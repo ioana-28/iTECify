@@ -87,6 +87,7 @@ export function EditorScreen() {
 
   const handleRun = async () => {
     try {
+      setTerminalOutput([])
       await runCodeExecutor({
         language: currentFile?.language,
         source: code,

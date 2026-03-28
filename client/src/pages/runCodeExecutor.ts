@@ -28,7 +28,6 @@ function mapType(event: ExecutionEvent): TerminalLineType {
 export async function runCodeExecutor(params: RunCodeExecutorParams): Promise<void> {
   const language = normalizeLanguage(params.language)
   params.setTerminalOpen(true)
-  params.addTerminalOutput(`$ run ${language}`, 'info')
 
   const start = await apiClient.startExecution({
     language,
@@ -41,7 +40,11 @@ export async function runCodeExecutor(params: RunCodeExecutorParams): Promise<vo
 
     source.onmessage = (event) => {
       const payload = JSON.parse(event.data) as ExecutionEvent
-      params.addTerminalOutput(payload.message, mapType(payload))
+      
+      // Only show actual code output (stdout, stderr, error), filter out setup logs
+      if (payload.type === 'stdout' || payload.type === 'stderr' || payload.type === 'error') {
+        params.addTerminalOutput(payload.message, mapType(payload))
+      }
 
       if (payload.type === 'complete') {
         source.close()
