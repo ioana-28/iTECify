@@ -6,12 +6,13 @@ import { EditorTabs } from './EditorTabs'
 import { Terminal } from './Terminal'
 import { runCodeExecutor } from './runCodeExecutor'
 import { createCollabSocket } from '../services/socket'
+import { apiClient } from '../services/api'
 import '../style/Editor.css'
 
 export function EditorScreen() {
   const editorRef = useRef(null)
   const socketRef = useRef(null)
-  const roomIdRef = useRef('main-room')
+  const roomIdRef = useRef('')
   const userIdRef = useRef(`user-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`)
   const isRemoteChangeRef = useRef(false)
   const remoteCursorsRef = useRef(new Map())
@@ -64,10 +65,47 @@ export function EditorScreen() {
   const [isTerminalOpen, setIsTerminalOpen] = useState(false)
   const [terminalOutput, setTerminalOutput] = useState([])
   const [isRunning, setIsRunning] = useState(false)
+  const [rooms, setRooms] = useState([])
+  const [currentRoomId, setCurrentRoomId] = useState('')
+  const [newRoomName, setNewRoomName] = useState('')
+  const [joinCode, setJoinCode] = useState('')
+  const [roomError, setRoomError] = useState('')
+  const [isRoomBusy, setIsRoomBusy] = useState(false)
+
+  const currentRoom = rooms.find((room) => room.id === currentRoomId) || null
+
+  const loadRooms = useCallback(async () => {
+    const result = await apiClient.listRooms()
+    setRooms(result.rooms)
+    if (result.rooms.length > 0 && !currentRoomId) {
+      setCurrentRoomId(result.rooms[0].id)
+    }
+  }, [currentRoomId])
 
   useEffect(() => {
     currentFilePathRef.current = currentFile?.path || ''
   }, [currentFile])
+
+  useEffect(() => {
+    const rawAuthUser = localStorage.getItem('authUser')
+    if (rawAuthUser) {
+      try {
+        const parsed = JSON.parse(rawAuthUser)
+        if (parsed && parsed.id) {
+          userIdRef.current = `user-${parsed.id}`
+        }
+      } catch {
+        // Keep fallback generated user id
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    loadRooms().catch((error) => {
+      const message = error instanceof Error ? error.message : 'Failed to load rooms'
+      setRoomError(message)
+    })
+  }, [loadRooms])
 
   const applyTextOperation = useCallback((content, operation) => {
     if (!operation || typeof operation.pos !== 'number') {
@@ -148,6 +186,11 @@ export function EditorScreen() {
   }, [])
 
   useEffect(() => {
+    if (!currentRoomId) {
+      return
+    }
+
+    roomIdRef.current = currentRoomId
     const socket = createCollabSocket(roomIdRef.current)
     socketRef.current = socket
 
@@ -236,7 +279,7 @@ export function EditorScreen() {
       socket.disconnect()
       socketRef.current = null
     }
-  }, [addTerminalOutput, applyRemoteCodeUpdate, applyTextOperation])
+  }, [addTerminalOutput, applyRemoteCodeUpdate, applyTextOperation, currentRoomId])
 
   const handleOpenFile = (name, path, language) => {
     // Check if file is already open
@@ -338,6 +381,39 @@ export function EditorScreen() {
     addTerminalOutput('🤖 AI Assistant: Ready to help!', 'info')
   }
 
+  const handleCreateRoom = async () => {
+    try {
+      setIsRoomBusy(true)
+      setRoomError('')
+      const created = await apiClient.createRoom(newRoomName || undefined)
+      const nextRooms = [created.room, ...rooms]
+      setRooms(nextRooms)
+      setCurrentRoomId(created.room.id)
+      setNewRoomName('')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create room'
+      setRoomError(message)
+    } finally {
+      setIsRoomBusy(false)
+    }
+  }
+
+  const handleJoinRoom = async () => {
+    try {
+      setIsRoomBusy(true)
+      setRoomError('')
+      const joined = await apiClient.joinRoom(joinCode)
+    await loadRooms()
+      setCurrentRoomId(joined.room.id)
+      setJoinCode('')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to join room'
+      setRoomError(message)
+    } finally {
+      setIsRoomBusy(false)
+    }
+  }
+
   const handleEditorChange = (value) => {
     const nextCode = value || ''
 
@@ -359,7 +435,7 @@ export function EditorScreen() {
     setCode(nextCode)
 
     const socket = socketRef.current
-    if (!socket || !currentFilePathRef.current) {
+    if (!socket || !currentFilePathRef.current || !roomIdRef.current) {
       return
     }
 
@@ -399,6 +475,54 @@ export function EditorScreen() {
           onAddAI={handleAddAI}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         />
+
+        <div className="room-controls">
+          <div className="room-controls-row">
+            <input
+              className="room-input"
+              type="text"
+              placeholder="Room name (optional)"
+              value={newRoomName}
+              onChange={(event) => setNewRoomName(event.target.value)}
+              disabled={isRoomBusy}
+            />
+            <button className="room-btn" onClick={handleCreateRoom} disabled={isRoomBusy}>
+              Create room
+            </button>
+            <input
+              className="room-input code"
+              type="text"
+              placeholder="Invite code"
+              value={joinCode}
+              onChange={(event) => setJoinCode(event.target.value.replace(/\s+/g, '').toUpperCase())}
+              disabled={isRoomBusy}
+            />
+            <button className="room-btn" onClick={handleJoinRoom} disabled={isRoomBusy || !joinCode.trim()}>
+              Join by code
+            </button>
+          </div>
+
+          <div className="room-controls-row">
+            <select
+              className="room-select"
+              value={currentRoomId}
+              onChange={(event) => setCurrentRoomId(event.target.value)}
+            >
+              {rooms.length === 0 ? <option value="">No rooms yet</option> : null}
+              {rooms.map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.name || 'Untitled room'} ({room.invite_code})
+                </option>
+              ))}
+            </select>
+            {currentRoom ? (
+              <span className="room-invite">Invite code: <strong>{currentRoom.invite_code}</strong></span>
+            ) : (
+              <span className="room-invite">Create or join a room to start collaboration.</span>
+            )}
+          </div>
+          {roomError ? <div className="room-error">{roomError}</div> : null}
+        </div>
 
         {/* Editor Tabs */}
         <EditorTabs 

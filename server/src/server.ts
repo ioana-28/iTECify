@@ -3,6 +3,7 @@ import { Server } from 'socket.io'
 import { createApp } from './app'
 import { config } from './config'
 import { registerCollaborationGateway } from './socket/collaborationGateway'
+import { ensureCollaborationTables } from './services/roomRepository'
 import { ensureUsersTable } from './services/userRepository'
 
 const app = createApp()
@@ -18,6 +19,7 @@ registerCollaborationGateway(io)
 
 async function bootstrap() {
   await ensureUsersTable()
+  await ensureCollaborationTables()
 
   server.listen(config.port, config.host, () => {
     console.log(`Backend listening on http://${config.host}:${config.port}`)

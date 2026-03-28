@@ -1,4 +1,7 @@
+import jwt, { type JwtPayload, type Secret } from 'jsonwebtoken'
 import type { Server, Socket } from 'socket.io'
+import { config } from '../config'
+import { isMember } from '../services/roomRepository'
 
 type JoinPayload = {
   roomId: string
@@ -160,13 +163,70 @@ function hasJoinedRoom(socket: Socket, roomId: string): boolean {
   return joinedRooms?.has(roomId) ?? false
 }
 
-function authorizeRoomAction(
-  _socket: Socket,
-  _roomId: string,
+function extractSocketToken(socket: Socket): string | null {
+  const authToken = socket.handshake.auth?.token
+  if (isNonEmptyString(authToken)) {
+    return authToken.trim()
+  }
+
+  const authHeader = socket.handshake.headers.authorization
+  if (typeof authHeader !== 'string' || authHeader.trim().length === 0) {
+    return null
+  }
+
+  const [scheme, token] = authHeader.trim().split(/\s+/, 2)
+  if (scheme?.toLowerCase() === 'bearer' && isNonEmptyString(token)) {
+    return token.trim()
+  }
+
+  if (!authHeader.includes(' ') && isNonEmptyString(authHeader)) {
+    return authHeader.trim()
+  }
+
+  return null
+}
+
+function parseJwtUserId(token: string): number | null {
+  try {
+    const decoded = jwt.verify(token, config.auth.jwtSecret as Secret)
+    const subject =
+      typeof decoded === 'string'
+        ? null
+        : ((decoded as JwtPayload).sub ?? (decoded as { sub?: unknown }).sub)
+
+    const userId =
+      typeof subject === 'string'
+        ? Number(subject)
+        : typeof subject === 'number'
+          ? subject
+          : Number.NaN
+
+    return Number.isSafeInteger(userId) && userId > 0 ? userId : null
+  } catch {
+    return null
+  }
+}
+
+async function authorizeRoomAction(
+  socket: Socket,
+  roomId: string,
   _event: string,
-): boolean {
-  // Placeholder hook for integrating auth/ACL checks.
-  return true
+): Promise<boolean> {
+  const authenticatedUserId =
+    typeof socket.data.userId === 'number' && Number.isSafeInteger(socket.data.userId)
+      ? socket.data.userId
+      : null
+
+  if (!authenticatedUserId) {
+    return false
+  }
+
+  try {
+    return await isMember(roomId, authenticatedUserId)
+  } catch (error) {
+    console.error(`[socket][authz] Failed to verify room membership for room "${roomId}":`, error)
+    return false
+  }
 }
 
 function isJoinPayload(payload: unknown): payload is JoinPayload {
@@ -402,7 +462,15 @@ function enforceEventAccess(
   socket: Socket,
   roomId: string,
   eventName: keyof typeof RATE_LIMITS,
-): boolean {
+): Promise<boolean> {
+  return enforceEventAccessInternal(socket, roomId, eventName)
+}
+
+async function enforceEventAccessInternal(
+  socket: Socket,
+  roomId: string,
+  eventName: keyof typeof RATE_LIMITS,
+): Promise<boolean> {
   if (!hasJoinedRoom(socket, roomId)) {
     emitGatewayError(
       socket,
@@ -413,7 +481,7 @@ function enforceEventAccess(
     return false
   }
 
-  if (!authorizeRoomAction(socket, roomId, eventName)) {
+  if (!(await authorizeRoomAction(socket, roomId, eventName))) {
     emitGatewayError(socket, eventName, 'UNAUTHORIZED', `Not authorized for room "${roomId}".`)
     return false
   }
@@ -427,14 +495,29 @@ function enforceEventAccess(
 }
 
 export function registerCollaborationGateway(io: Server): void {
+  io.use((socket, next) => {
+    const token = extractSocketToken(socket)
+    if (!token) {
+      next()
+      return
+    }
+
+    const userId = parseJwtUserId(token)
+    if (userId) {
+      socket.data.userId = userId
+    }
+
+    next()
+  })
+
   io.on('connection', (socket) => {
-    socket.on('room:join', (payload: unknown) => {
+    socket.on('room:join', async (payload: unknown) => {
       if (!isJoinPayload(payload)) {
         emitGatewayError(socket, 'room:join', 'INVALID_PAYLOAD', 'Invalid room:join payload.')
         return
       }
 
-      if (!authorizeRoomAction(socket, payload.roomId, 'room:join')) {
+      if (!(await authorizeRoomAction(socket, payload.roomId, 'room:join'))) {
         emitGatewayError(socket, 'room:join', 'UNAUTHORIZED', 'Not authorized to join this room.')
         return
       }
@@ -454,7 +537,7 @@ export function registerCollaborationGateway(io: Server): void {
       })
     })
 
-    socket.on('editor:change', (payload: unknown) => {
+    socket.on('editor:change', async (payload: unknown) => {
       if (!isEditorChangePayload(payload)) {
         emitGatewayError(
           socket,
@@ -465,7 +548,7 @@ export function registerCollaborationGateway(io: Server): void {
         return
       }
 
-      if (!enforceEventAccess(socket, payload.roomId, 'editor:change')) {
+      if (!(await enforceEventAccess(socket, payload.roomId, 'editor:change'))) {
         return
       }
 
@@ -480,20 +563,20 @@ export function registerCollaborationGateway(io: Server): void {
       socket.to(payload.roomId).emit('editor:patch', payload)
     })
 
-    socket.on('cursor:move', (payload: unknown) => {
+    socket.on('cursor:move', async (payload: unknown) => {
       if (!isCursorMovePayload(payload)) {
         emitGatewayError(socket, 'cursor:move', 'INVALID_PAYLOAD', 'Invalid cursor:move payload.')
         return
       }
 
-      if (!enforceEventAccess(socket, payload.roomId, 'cursor:move')) {
+      if (!(await enforceEventAccess(socket, payload.roomId, 'cursor:move'))) {
         return
       }
 
       socket.to(payload.roomId).emit('cursor:update', payload)
     })
 
-    socket.on('ai:propose-block', (payload: unknown) => {
+    socket.on('ai:propose-block', async (payload: unknown) => {
       if (!isAiProposeBlockPayload(payload)) {
         emitGatewayError(
           socket,
@@ -504,27 +587,27 @@ export function registerCollaborationGateway(io: Server): void {
         return
       }
 
-      if (!enforceEventAccess(socket, payload.roomId, 'ai:propose-block')) {
+      if (!(await enforceEventAccess(socket, payload.roomId, 'ai:propose-block'))) {
         return
       }
 
       io.to(payload.roomId).emit('ai:block-proposed', payload)
     })
 
-    socket.on('ai:decision', (payload: unknown) => {
+    socket.on('ai:decision', async (payload: unknown) => {
       if (!isAiDecisionPayload(payload)) {
         emitGatewayError(socket, 'ai:decision', 'INVALID_PAYLOAD', 'Invalid ai:decision payload.')
         return
       }
 
-      if (!enforceEventAccess(socket, payload.roomId, 'ai:decision')) {
+      if (!(await enforceEventAccess(socket, payload.roomId, 'ai:decision'))) {
         return
       }
 
       io.to(payload.roomId).emit('ai:decision-applied', payload)
     })
 
-    socket.on('terminal:stream', (payload: unknown) => {
+    socket.on('terminal:stream', async (payload: unknown) => {
       if (!isTerminalStreamPayload(payload)) {
         emitGatewayError(
           socket,
@@ -535,7 +618,7 @@ export function registerCollaborationGateway(io: Server): void {
         return
       }
 
-      if (!enforceEventAccess(socket, payload.roomId, 'terminal:stream')) {
+      if (!(await enforceEventAccess(socket, payload.roomId, 'terminal:stream'))) {
         return
       }
 

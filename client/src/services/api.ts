@@ -35,6 +35,14 @@ export type RegisterPayload = {
 
 export type RunLanguage = 'python' | 'node' | 'c' | 'cpp' | 'rust'
 
+export type Room = {
+  id: string
+  owner_user_id: number
+  name: string | null
+  invite_code: string
+  created_at: string
+}
+
 export type ExecutePayload = {
   language: RunLanguage
   source: string
@@ -53,11 +61,22 @@ export type ExecutionEvent = {
   exitCode?: number
 }
 
+function getAuthToken(): string | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  const token = window.localStorage.getItem('authToken')
+  return token && token.trim().length > 0 ? token : null
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getAuthToken()
   const response = await fetch(`${config.apiBaseUrl}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
   })
@@ -117,6 +136,24 @@ async function stopExecution(sessionId: string): Promise<{ sessionId: string; st
   })
 }
 
+async function createRoom(name?: string): Promise<{ room: Room }> {
+  return requestJson<{ room: Room }>('/api/rooms', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  })
+}
+
+async function joinRoom(code: string): Promise<{ room: Room }> {
+  return requestJson<{ room: Room }>('/api/rooms/join', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  })
+}
+
+async function listRooms(): Promise<{ rooms: Room[] }> {
+  return requestJson<{ rooms: Room[] }>('/api/rooms')
+}
+
 function streamExecution(sessionId: string): EventSource {
   return new EventSource(`${config.apiBaseUrl}/api/execute/${sessionId}/stream`)
 }
@@ -127,5 +164,8 @@ export const apiClient = {
   register,
   startExecution,
   stopExecution,
+  createRoom,
+  joinRoom,
+  listRooms,
   streamExecution,
 }
