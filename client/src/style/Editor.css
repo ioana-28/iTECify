@@ -218,8 +218,39 @@
   font-size: 12px;
 }
 
+.room-invite-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .room-invite strong {
   color: #1f2937;
+}
+
+.room-copy-btn {
+  height: 28px;
+  border: 1px solid #a78bfa;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #ffffff;
+  color: #6d28d9;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.room-copy-btn:hover {
+  background: #f5f3ff;
+  border-color: #8b5cf6;
+}
+
+.room-copy-feedback {
+  font-size: 12px;
+  color: #16a34a;
+  font-weight: 600;
 }
 
 .room-error {
