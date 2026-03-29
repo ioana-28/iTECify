@@ -22,10 +22,14 @@ export function ProjectsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+  const [isOpenProjectModalOpen, setIsOpenProjectModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [projectName, setProjectName] = useState("");
   const [projectLanguage, setProjectLanguage] = useState(PROJECT_LANGUAGES[0]?.value ?? "javascript");
   const [joinCode, setJoinCode] = useState("");
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [isLoadingAllProjects, setIsLoadingAllProjects] = useState(false);
+  const [openProjectError, setOpenProjectError] = useState<string | null>(null);
 
   const enterEditor = (project: Project, room: Room) => {
     sessionStorage.setItem("projectContextReady", "true");
@@ -133,6 +137,7 @@ export function ProjectsPage() {
     try {
       setIsSubmitting(true);
       setActionError(null);
+      setIsOpenProjectModalOpen(false);
       const result = await apiClient.openProject(projectId);
       await loadProjects();
       enterEditor(result.project, result.room);
@@ -144,15 +149,20 @@ export function ProjectsPage() {
     }
   };
 
-  const openLatestProject = () => {
-    const latest = recentProjects[0];
-    if (!latest) {
-      setActionError("No recent projects yet. Create one first.");
-      return;
+  const openProjectPicker = async () => {
+    setActionError(null);
+    setOpenProjectError(null);
+    setIsOpenProjectModalOpen(true);
+    setIsLoadingAllProjects(true);
+    try {
+      const result = await apiClient.listAllProjects();
+      setAllProjects(result.projects);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load projects";
+      setOpenProjectError(message);
+    } finally {
+      setIsLoadingAllProjects(false);
     }
-    handleOpenRecentProject(latest.id).catch(() => {
-      // handled in method
-    });
   };
 
   const openCreateModal = () => {
@@ -171,6 +181,7 @@ export function ProjectsPage() {
     }
     setIsCreateModalOpen(false);
     setIsJoinModalOpen(false);
+    setIsOpenProjectModalOpen(false);
   };
 
   return (
@@ -201,11 +212,11 @@ export function ProjectsPage() {
               </span>
             </button>
 
-            <button type="button" className="action-item" onClick={openLatestProject}>
+            <button type="button" className="action-item" onClick={() => openProjectPicker().catch(() => {})}>
               <span className="action-icon" aria-hidden="true">◫</span>
               <span className="action-copy">
                 <span className="action-title">Open Project</span>
-                <span className="action-subtitle">Open your most recently used project</span>
+                <span className="action-subtitle">Choose from your saved projects</span>
               </span>
             </button>
 
@@ -239,7 +250,7 @@ export function ProjectsPage() {
           </div>
         </div>
 
-        {(isCreateModalOpen || isJoinModalOpen) && (
+        {(isCreateModalOpen || isJoinModalOpen || isOpenProjectModalOpen) && (
           <div className="projects-modal-backdrop" onClick={closeModals}>
             {isCreateModalOpen ? (
               <div className="projects-modal" onClick={(event) => event.stopPropagation()}>
@@ -304,6 +315,36 @@ export function ProjectsPage() {
                     </button>
                   </div>
                 </form>
+              </div>
+            ) : null}
+
+            {isOpenProjectModalOpen ? (
+              <div className="projects-modal" onClick={(event) => event.stopPropagation()}>
+                <h3>Open project</h3>
+                {isLoadingAllProjects ? <p className="projects-info">Loading projects…</p> : null}
+                {openProjectError ? <p className="projects-error">{openProjectError}</p> : null}
+                {!isLoadingAllProjects && allProjects.length === 0 ? (
+                  <p className="projects-info">No saved projects found for your account.</p>
+                ) : null}
+                <div className="projects-picker-list">
+                  {allProjects.map((project) => (
+                    <button
+                      key={project.id}
+                      type="button"
+                      className="projects-picker-entry"
+                      onClick={() => handleOpenRecentProject(project.id)}
+                      disabled={isSubmitting}
+                    >
+                      <span className="project-name">{project.name}</span>
+                      <span className="project-link">{project.primaryLanguage} • {project.roomInviteCode}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="projects-modal-actions">
+                  <button type="button" onClick={closeModals} disabled={isSubmitting}>
+                    Close
+                  </button>
+                </div>
               </div>
             ) : null}
           </div>

@@ -5,6 +5,7 @@ import {
   createProject,
   ensureProjectForJoinedRoom,
   findProjectByIdForUser,
+  listAllProjectsForUser,
   listRecentProjectsForUser,
   touchProjectLastOpened,
   type ProjectWithRoomRow,
@@ -81,6 +82,21 @@ projectRoute.get('/projects', async (req, res, next) => {
 
     const recentProjects = await listRecentProjectsForUser(userId, 3)
     res.status(200).json({ projects: recentProjects.map(toProjectResponse) })
+  } catch (error) {
+    next(error)
+  }
+})
+
+projectRoute.get('/projects/all', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+
+    const projects = await listAllProjectsForUser(userId)
+    res.status(200).json({ projects: projects.map(toProjectResponse) })
   } catch (error) {
     next(error)
   }

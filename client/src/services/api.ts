@@ -203,6 +203,10 @@ async function listProjects(): Promise<{ projects: Project[] }> {
   return requestJson<{ projects: Project[] }>('/api/projects')
 }
 
+async function listAllProjects(): Promise<{ projects: Project[] }> {
+  return requestJson<{ projects: Project[] }>('/api/projects/all')
+}
+
 async function joinProjectByCode(code: string): Promise<{ project: Project; room: Room }> {
   return requestJson<{ project: Project; room: Room }>('/api/projects/join', {
     method: 'POST',
@@ -238,6 +242,7 @@ export const apiClient = {
   listRooms,
   createProject,
   listProjects,
+  listAllProjects,
   joinProjectByCode,
   openProject,
   editFileWithAi,

@@ -151,6 +151,29 @@ export async function listRecentProjectsForUser(userId: number, limit = 3): Prom
   return result.rows
 }
 
+export async function listAllProjectsForUser(userId: number): Promise<ProjectWithRoomRow[]> {
+  const result = await db.query<ProjectWithRoomRow>(
+    `SELECT
+       p.id,
+       p.user_id,
+       p.room_id,
+       p.name,
+       p.primary_language,
+       p.tree_snapshot::text,
+       p.created_at,
+       p.updated_at,
+       p.last_opened_at,
+       r.invite_code AS room_invite_code
+     FROM projects p
+     INNER JOIN rooms r ON r.id = p.room_id
+     WHERE p.user_id = $1
+     ORDER BY p.last_opened_at DESC, p.updated_at DESC`,
+    [userId],
+  )
+
+  return result.rows
+}
+
 export async function findProjectByIdForUser(projectId: string, userId: number): Promise<ProjectWithRoomRow | null> {
   const result = await db.query<ProjectWithRoomRow>(
     `SELECT
