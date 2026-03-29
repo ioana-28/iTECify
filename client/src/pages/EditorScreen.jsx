@@ -5,6 +5,7 @@ import { Toolbar } from './Toolbar'
 import { EditorTabs } from './EditorTabs'
 import { Terminal } from './Terminal'
 import { runCodeExecutor } from './runCodeExecutor'
+import { SecurityPopup } from './SecurityPopup'
 import { createCollabSocket } from '../services/socket'
 import { getLanguageFromPath } from '../services/language'
 import { apiClient } from '../services/api'
@@ -161,6 +162,8 @@ export function EditorScreen() {
   const [copilotDraft, setCopilotDraft] = useState('')
   const [isCopilotBusy, setIsCopilotBusy] = useState(false)
   const [pendingSuggestion, setPendingSuggestion] = useState(null)
+  const [isSecurityPopupOpen, setIsSecurityPopupOpen] = useState(false)
+  const [securityPopupMessage, setSecurityPopupMessage] = useState('')
   const [copilotMessages, setCopilotMessages] = useState([
     {
       id: 'assistant-welcome',
@@ -930,6 +933,16 @@ export function EditorScreen() {
       applyRemoteCursorDecorations()
     }
 
+    const handleChaosDetected = (payload) => {
+      if (!payload || typeof payload.message !== 'string') {
+        return
+      }
+      setSecurityPopupMessage(payload.message)
+      setIsSecurityPopupOpen(true)
+      setIsTerminalOpen(true)
+      addTerminalOutput(`[SECURITY] ${payload.message}`, 'warning')
+    }
+
     socket.on('room:state-sync', handleStateSync)
     socket.on('tree:state-sync', handleTreeStateSync)
     socket.on('tree:node-created', handleTreeNodeCreated)
@@ -937,6 +950,7 @@ export function EditorScreen() {
     socket.on('editor:patch', handleEditorPatch)
     socket.on('terminal:output', handleTerminalOutput)
     socket.on('cursor:update', handleCursorUpdate)
+    socket.on('security:chaos_detected', handleChaosDetected)
 
     return () => {
       remoteCursorsRef.current = new Map()
@@ -968,6 +982,7 @@ export function EditorScreen() {
       socket.off('editor:patch', handleEditorPatch)
       socket.off('terminal:output', handleTerminalOutput)
       socket.off('cursor:update', handleCursorUpdate)
+      socket.off('security:chaos_detected', handleChaosDetected)
       socket.disconnect()
       socketRef.current = null
     }
@@ -1078,6 +1093,60 @@ export function EditorScreen() {
     try {
       setIsRunning(true)
       setTerminalOutput([])
+      const socket = socketRef.current
+      if (socket && currentRoomId && currentFile?.language) {
+        const precheckResult = await new Promise((resolve) => {
+          let settled = false
+
+          const onPass = (payload) => {
+            if (settled || !payload || payload.roomId !== currentRoomId || !payload.ok) {
+              return
+            }
+            settled = true
+            socket.off('security:precheck_passed', onPass)
+            socket.off('security:chaos_detected', onChaos)
+            resolve(true)
+          }
+
+          const onChaos = () => {
+            if (settled) {
+              return
+            }
+            settled = true
+            socket.off('security:precheck_passed', onPass)
+            socket.off('security:chaos_detected', onChaos)
+            resolve(false)
+          }
+
+          socket.on('security:precheck_passed', onPass)
+          socket.once('security:chaos_detected', onChaos)
+          socket.emit('code:execute', {
+            roomId: currentRoomId,
+            userId: userIdRef.current,
+            language: currentFile.language,
+            source: code,
+            stdin: '',
+            stepMode: mode === 'step',
+          })
+
+          window.setTimeout(() => {
+            if (settled) {
+              return
+            }
+            settled = true
+            socket.off('security:precheck_passed', onPass)
+            socket.off('security:chaos_detected', onChaos)
+            resolve(true)
+          }, 1200)
+        })
+
+        if (!precheckResult) {
+          setIsRunning(false)
+          runControllerRef.current = null
+          return
+        }
+      }
+
       const controller = await runCodeExecutor({
         language: currentFile?.language,
         source: code,
@@ -1488,6 +1557,11 @@ Context handling requirements:
 
   return (
     <div className="editor-screen">
+      <SecurityPopup
+        isOpen={isSecurityPopupOpen}
+        message={securityPopupMessage}
+        onClose={() => setIsSecurityPopupOpen(false)}
+      />
       {/* Sidebar - File Explorer */}
       <Sidebar 
         fileSystem={fileSystem}

@@ -5,7 +5,6 @@ import { config } from '../config'
 import type { ExecutionSessionEvent, RunCodeRequest } from '../types'
 import { executionSessionStore } from './executionSessionStore'
 import { languageSpecs } from './languageSpecs'
-import { scanSourceForRisks } from './vulnerabilityScanner'
 
 const docker = new Docker()
 const EXECUTION_TIMEOUT_MS = config.execution.timeoutMs
@@ -47,7 +46,6 @@ export class SandboxExecutionService {
       .kill()
       .catch(() => undefined)
       .finally(() => {
-        emit(sessionId, { type: 'status', message: 'Execution stopped by user.' })
         emit(sessionId, { type: 'complete', message: 'Execution stopped.', exitCode: 130 })
         executionSessionStore.completeSession(sessionId)
       })
@@ -61,41 +59,20 @@ export class SandboxExecutionService {
       throw new Error(`Unsupported language: ${request.language}`)
     }
 
-    emit(sessionId, { type: 'scan', message: 'Running vulnerability scan hook...' })
-    const scanResult = scanSourceForRisks(request.source)
-    if (scanResult.blocked) {
-      emit(sessionId, { type: 'error', message: scanResult.summary })
-      emit(sessionId, { type: 'complete', message: 'Execution blocked by scan.', exitCode: 1 })
-      executionSessionStore.completeSession(sessionId)
-      return
-    }
-    emit(sessionId, { type: 'scan', message: scanResult.summary })
-
     let container: Docker.Container | null = null
     try {
-      emit(sessionId, { type: 'status', message: `Preparing Docker image ${spec.image}...` })
       await this.ensureImage(spec.image)
 
-      emit(sessionId, { type: 'status', message: `Creating isolated ${request.language} container...` })
-      if (request.stepMode) {
-        emit(
-          sessionId,
-          {
-            type: 'status',
-            message:
-              'Step mode is currently simulated per output event; using protected timed execution in sandbox.',
-          },
-        )
-      }
       container = await docker.createContainer({
         Image: spec.image,
         Cmd: ['sh', '-lc', `${spec.executionScript} < /workspace/stdin.txt`],
         WorkingDir: '/workspace',
+        NetworkDisabled: true,
         HostConfig: {
           AutoRemove: false,
-          Memory: 256 * 1024 * 1024,
-          NanoCpus: 1_000_000_000,
-          PidsLimit: 128,
+          Memory: 134_217_728,
+          NanoCpus: 500_000_000,
+          PidsLimit: 20,
           SecurityOpt: ['no-new-privileges:true'],
           NetworkMode: 'none',
         },
@@ -104,7 +81,6 @@ export class SandboxExecutionService {
       const archive = await this.createWorkspaceArchive(spec.sourceFile, request.source, request.stdin ?? '')
       await container.putArchive(archive, { path: '/workspace' })
 
-      emit(sessionId, { type: 'status', message: 'Starting container...' })
       await container.start()
       this.activeContainers.set(sessionId, container)
 
@@ -130,7 +106,6 @@ export class SandboxExecutionService {
     } finally {
       this.activeContainers.delete(sessionId)
       if (container) {
-        emit(sessionId, { type: 'status', message: 'Cleaning up container...' })
         try {
           await container.remove({ force: true })
         } catch {
