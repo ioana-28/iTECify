@@ -154,6 +154,8 @@ export function EditorScreen() {
   const [terminalHeight, setTerminalHeight] = useState(240)
   const [isTerminalResizing, setIsTerminalResizing] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
+  const [isPinguEnabled, setIsPinguEnabled] = useState(false)
+  const [pinguStatus, setPinguStatus] = useState('idle')
   const [rooms, setRooms] = useState([])
   const [currentRoomId, setCurrentRoomId] = useState('')
   const [newRoomName, setNewRoomName] = useState('')
@@ -1201,6 +1203,12 @@ export function EditorScreen() {
     }
   }
 
+  useEffect(() => {
+    if (!isPinguEnabled) {
+      setPinguStatus('idle')
+    }
+  }, [isPinguEnabled])
+
   const startRun = async (mode = 'run') => {
     if (isRunning) {
       addTerminalOutput('Execution already running. Stop first to run again.', 'warning')
@@ -1209,6 +1217,7 @@ export function EditorScreen() {
 
     try {
       setIsRunning(true)
+      setPinguStatus('running')
       setTerminalOutput([])
       const socket = socketRef.current
       if (socket && currentRoomId && currentFile?.language) {
@@ -1258,6 +1267,7 @@ export function EditorScreen() {
         })
 
         if (!precheckResult) {
+          setPinguStatus('error')
           setIsRunning(false)
           runControllerRef.current = null
           return
@@ -1272,6 +1282,20 @@ export function EditorScreen() {
           setIsRunning(false)
           runControllerRef.current = null
         },
+        onEvent: (event) => {
+          if (!event) {
+            return
+          }
+
+          if (event.type === 'error' || event.type === 'stderr') {
+            setPinguStatus('error')
+            return
+          }
+
+          if (event.type === 'complete') {
+            setPinguStatus(event.exitCode === 0 ? 'success' : 'error')
+          }
+        },
         setTerminalOpen: setIsTerminalOpen,
         addTerminalOutput,
       })
@@ -1280,6 +1304,7 @@ export function EditorScreen() {
       const message = error instanceof Error ? error.message : 'Unknown run error'
       setIsTerminalOpen(true)
       addTerminalOutput(`Execution failed: ${message}`, 'error')
+      setPinguStatus('error')
       setIsRunning(false)
       runControllerRef.current = null
     }
@@ -1613,6 +1638,9 @@ Context handling requirements:
         }}
         onPreviewSnapshot={previewSnapshot}
         onRestoreSnapshot={restoreSnapshot}
+        isPinguEnabled={isPinguEnabled}
+        onTogglePingu={() => setIsPinguEnabled((previous) => !previous)}
+        pinguStatus={pinguStatus}
       />
 
       {/* Main editor area */}
