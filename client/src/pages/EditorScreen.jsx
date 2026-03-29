@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Editor from '@monaco-editor/react'
+import * as Y from 'yjs'
 import { Sidebar } from './Sidebar'
 import { Toolbar } from './Toolbar'
 import { EditorTabs } from './EditorTabs'
@@ -138,6 +139,7 @@ export function EditorScreen() {
   const selectionDisposableRef = useRef(null)
   const runControllerRef = useRef(null)
   const aiChangeDecorationIdsRef = useRef([])
+  const snapshotDocRef = useRef(new Y.Doc())
   
   const [treeNodes, setTreeNodes] = useState(() => new Map())
   const fileSystem = toFileSystemFromTree(treeNodes)
@@ -164,6 +166,8 @@ export function EditorScreen() {
   const [pendingSuggestion, setPendingSuggestion] = useState(null)
   const [isSecurityPopupOpen, setIsSecurityPopupOpen] = useState(false)
   const [securityPopupMessage, setSecurityPopupMessage] = useState('')
+  const [snapshots, setSnapshots] = useState([])
+  const [snapshotPreview, setSnapshotPreview] = useState(null)
   const [copilotMessages, setCopilotMessages] = useState([
     {
       id: 'assistant-welcome',
@@ -200,6 +204,8 @@ export function EditorScreen() {
   setTreeNodes(new Map())
   setOpenFiles([])
   setCurrentFile(null)
+  setSnapshots([])
+  setSnapshotPreview(null)
   currentFilePathRef.current = ''
   codeRef.current = ''
   setCode('')
@@ -225,6 +231,8 @@ export function EditorScreen() {
       )
   }
 }, [clearAiChangeHighlights, currentRoomId])
+
+ 
 
   useEffect(() => {
     const rawAuthUser = localStorage.getItem('authUser')
@@ -387,6 +395,38 @@ export function EditorScreen() {
   const addTerminalOutput = useCallback((text, type = 'info') => {
     setTerminalOutput((prev) => [...prev, { type, text }])
   }, [])
+
+  const toBase64 = useCallback((bytes) => {
+    let binary = ''
+    for (let index = 0; index < bytes.length; index += 1) {
+      binary += String.fromCharCode(bytes[index])
+    }
+    return window.btoa(binary)
+  }, [])
+
+  const fromBase64 = useCallback((value) => {
+    const binary = window.atob(value)
+    const bytes = new Uint8Array(binary.length)
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index)
+    }
+    return bytes
+  }, [])
+
+  const syncSnapshotDocFromCode = useCallback((nextCode) => {
+    const text = snapshotDocRef.current.getText('content')
+    if (text.toString() === nextCode) {
+      return
+    }
+    text.delete(0, text.length)
+    if (nextCode) {
+      text.insert(0, nextCode)
+    }
+  }, [])
+
+  useEffect(() => {
+  syncSnapshotDocFromCode(code)
+  }, [code, syncSnapshotDocFromCode])
 
   useEffect(() => {
     if (!isTerminalResizing) {
@@ -943,6 +983,13 @@ export function EditorScreen() {
       addTerminalOutput(`[SECURITY] ${payload.message}`, 'warning')
     }
 
+    const handleSnapshots = (payload) => {
+      if (!payload || payload.roomId !== roomIdRef.current || !Array.isArray(payload.snapshots)) {
+        return
+      }
+      setSnapshots(payload.snapshots)
+    }
+
     socket.on('room:state-sync', handleStateSync)
     socket.on('tree:state-sync', handleTreeStateSync)
     socket.on('tree:node-created', handleTreeNodeCreated)
@@ -951,6 +998,7 @@ export function EditorScreen() {
     socket.on('terminal:output', handleTerminalOutput)
     socket.on('cursor:update', handleCursorUpdate)
     socket.on('security:chaos_detected', handleChaosDetected)
+    socket.on('room:snapshots', handleSnapshots)
 
     return () => {
       remoteCursorsRef.current = new Map()
@@ -983,6 +1031,7 @@ export function EditorScreen() {
       socket.off('terminal:output', handleTerminalOutput)
       socket.off('cursor:update', handleCursorUpdate)
       socket.off('security:chaos_detected', handleChaosDetected)
+      socket.off('room:snapshots', handleSnapshots)
       socket.disconnect()
       socketRef.current = null
     }
@@ -1062,6 +1111,74 @@ export function EditorScreen() {
       parentPath: normalizedParentPath,
     })
   }
+
+  const createSnapshot = useCallback((name) => {
+    const snapshotName = name?.trim()
+    if (!snapshotName) {
+      return
+    }
+
+    const socket = socketRef.current
+    if (!socket || !roomIdRef.current) {
+      addTerminalOutput('Snapshot failed: connect to a room first.', 'warning')
+      return
+    }
+
+    syncSnapshotDocFromCode(codeRef.current)
+    const update = Y.encodeStateAsUpdate(snapshotDocRef.current)
+    const updateBase64 = toBase64(update)
+    socket.emit('room:save_snapshot', {
+      roomId: roomIdRef.current,
+      name: snapshotName,
+      author: displayNameRef.current || 'Guest',
+      updateBase64,
+    })
+    addTerminalOutput(`Snapshot "${snapshotName}" saved.`, 'success')
+  }, [addTerminalOutput, syncSnapshotDocFromCode, toBase64])
+
+  const previewSnapshot = useCallback((snapshot) => {
+    if (!snapshot?.updateBase64) {
+      return
+    }
+
+    try {
+      const previewDoc = new Y.Doc()
+      Y.applyUpdate(previewDoc, fromBase64(snapshot.updateBase64))
+      const previewCode = previewDoc.getText('content').toString()
+      setSnapshotPreview({
+        id: snapshot.id,
+        name: snapshot.name,
+        code: previewCode,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Snapshot preview failed'
+      addTerminalOutput(`Preview failed: ${message}`, 'error')
+    }
+  }, [addTerminalOutput, fromBase64])
+
+  const restoreSnapshot = useCallback((snapshot) => {
+    if (!snapshot?.updateBase64) {
+      addTerminalOutput('Restore failed: invalid snapshot data.', 'error')
+      return
+    }
+
+    const shouldRestore = window.confirm('Are you sure you want to travel back in time?')
+    if (!shouldRestore) {
+      return
+    }
+
+    try {
+      const restoredDoc = new Y.Doc()
+      Y.applyUpdate(restoredDoc, fromBase64(snapshot.updateBase64))
+      const restoredCode = restoredDoc.getText('content').toString()
+      handleAiUpdate(restoredCode)
+      syncSnapshotDocFromCode(restoredCode)
+      addTerminalOutput(`Restored snapshot "${snapshot.name}".`, 'success')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Snapshot restore failed'
+      addTerminalOutput(`Restore failed: ${message}`, 'error')
+    }
+  }, [addTerminalOutput, fromBase64, syncSnapshotDocFromCode])
 
   const handleCloseFile = (fileId) => {
     setOpenFiles(prev => prev.filter(f => f.id !== fileId))
@@ -1487,6 +1604,15 @@ Context handling requirements:
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         onCreateFile={(options) => handleCreateNode('file', options)}
         onCreateFolder={(options) => handleCreateNode('folder', options)}
+        snapshots={snapshots}
+        onCreateSnapshot={() => {
+          const name = window.prompt("Name this memory:", `Snapshot ${new Date().toLocaleTimeString()}`)
+          if (name) {
+            createSnapshot(name)
+          }
+        }}
+        onPreviewSnapshot={previewSnapshot}
+        onRestoreSnapshot={restoreSnapshot}
       />
 
       {/* Main editor area */}
@@ -1653,6 +1779,19 @@ Context handling requirements:
               onResizeStart={handleTerminalResizeStart}
               onClose={() => setIsTerminalOpen(false)}
             />
+            {snapshotPreview ? (
+              <div className="copilot-suggestion-preview">
+                <div className="copilot-suggestion-heading">Snapshot Preview: {snapshotPreview.name}</div>
+                <pre className="copilot-suggestion-code">
+                  <code>{snapshotPreview.code || '// Empty snapshot content.'}</code>
+                </pre>
+                <div className="copilot-suggestion-actions">
+                  <button className="copilot-undo-btn" type="button" onClick={() => setSnapshotPreview(null)}>
+                    Close preview
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {isCopilotOpen ? (

@@ -9,6 +9,10 @@ export const Sidebar = ({
   onToggleSidebar,
   onCreateFile,
   onCreateFolder,
+  snapshots = [],
+  onCreateSnapshot,
+  onPreviewSnapshot,
+  onRestoreSnapshot,
 }) => {
   const [expandedFolders, setExpandedFolders] = useState(new Set(['src']))
   const [pendingCreate, setPendingCreate] = useState(null)
@@ -201,6 +205,42 @@ export const Sidebar = ({
             <div className="file-tree">
               {renderInlineRow(null)}
               {renderFileTree(fileSystem)}
+            </div>
+
+            <div className="memory-section">
+              <div className="section-title-row">
+                <div className="section-title">Diva's Memory</div>
+                <button
+                  type="button"
+                  className="sidebar-action-btn"
+                  onClick={onCreateSnapshot}
+                  title="Save snapshot"
+                >
+                  Save
+                </button>
+              </div>
+              {snapshots.length === 0 ? (
+                <div className="memory-empty">No snapshots yet.</div>
+              ) : (
+                <div className="memory-list">
+                  {snapshots.map((snapshot) => (
+                    <div key={snapshot.id} className="memory-item">
+                      <div className="memory-item-title">{snapshot.name || 'Untitled snapshot'}</div>
+                      <div className="memory-item-meta">
+                        by {snapshot.author || 'Unknown'} · {new Date(snapshot.createdAt).toLocaleString()}
+                      </div>
+                      <div className="memory-item-actions">
+                        <button type="button" className="memory-btn" onClick={() => onPreviewSnapshot?.(snapshot)}>
+                          Preview
+                        </button>
+                        <button type="button" className="memory-btn restore" onClick={() => onRestoreSnapshot?.(snapshot)}>
+                          Restore
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </aside>

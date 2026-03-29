@@ -119,6 +119,25 @@ type CodeExecutePayload = {
   stepMode?: boolean
 }
 
+type SnapshotEntry = {
+  id: string
+  name: string
+  author: string
+  createdAt: number
+  updateBase64: string
+}
+
+type SaveSnapshotPayload = {
+  roomId: string
+  name: string
+  author: string
+  updateBase64: string
+}
+
+type SnapshotRequestPayload = {
+  roomId: string
+}
+
 type GatewayErrorPayload = {
   event: string
   code:
@@ -138,10 +157,13 @@ const RATE_LIMITS = {
   'ai:decision': { limit: 40, windowMs: 10_000 },
   'tree:sync': { limit: 30, windowMs: 1000 },
   'tree:create': { limit: 30, windowMs: 1000 },
+  'room:save_snapshot': { limit: 20, windowMs: 10_000 },
+  'room:snapshots:request': { limit: 40, windowMs: 10_000 },
 } as const
 
 const eventTimestamps = new Map<string, number[]>()
 const roomFileStates = new Map<string, { content: string; version: number }>()
+const roomSnapshots = new Map<string, SnapshotEntry[]>()
 
 function getRoomFileKey(roomId: string, docId: string): string {
   return `${roomId}::${docId}`
@@ -572,6 +594,31 @@ function isCodeExecutePayload(payload: unknown): payload is CodeExecutePayload {
   return true
 }
 
+function isSnapshotRequestPayload(payload: unknown): payload is SnapshotRequestPayload {
+  return isObject(payload) && isNonEmptyString(payload.roomId)
+}
+
+function isSaveSnapshotPayload(payload: unknown): payload is SaveSnapshotPayload {
+  if (!isObject(payload)) {
+    return false
+  }
+
+  return (
+    isNonEmptyString(payload.roomId) &&
+    isNonEmptyString(payload.name) &&
+    isNonEmptyString(payload.author) &&
+    isNonEmptyString(payload.updateBase64)
+  )
+}
+
+function getRoomSnapshots(roomId: string): SnapshotEntry[] {
+  return roomSnapshots.get(roomId) ?? []
+}
+
+function setRoomSnapshots(roomId: string, snapshots: SnapshotEntry[]): void {
+  roomSnapshots.set(roomId, snapshots)
+}
+
 function buildChaosMessage(type: string | null): string {
   if (type === 'file_deletion') {
     return "Diva, why are you trying to get rid of my stuff? This isn't a breakup!"
@@ -684,6 +731,10 @@ export function registerCollaborationGateway(io: Server): void {
           filePath: payload.docId,
           content: latestState.content,
           baseVersion: latestState.version,
+        })
+        socket.emit('room:snapshots', {
+          roomId: payload.roomId,
+          snapshots: getRoomSnapshots(payload.roomId),
         })
 
         if (!alreadyJoined) {
@@ -934,6 +985,48 @@ export function registerCollaborationGateway(io: Server): void {
       }
 
       socket.emit('security:precheck_passed', { roomId: payload.roomId, ok: true })
+    })
+
+    socket.on('room:snapshots:request', async (payload: unknown) => {
+      if (!isSnapshotRequestPayload(payload)) {
+        emitGatewayError(socket, 'room:snapshots:request', 'INVALID_PAYLOAD', 'Invalid room:snapshots:request payload.')
+        return
+      }
+
+      if (!(await enforceEventAccess(socket, payload.roomId, 'room:snapshots:request'))) {
+        return
+      }
+
+      socket.emit('room:snapshots', {
+        roomId: payload.roomId,
+        snapshots: getRoomSnapshots(payload.roomId),
+      })
+    })
+
+    socket.on('room:save_snapshot', async (payload: unknown) => {
+      if (!isSaveSnapshotPayload(payload)) {
+        emitGatewayError(socket, 'room:save_snapshot', 'INVALID_PAYLOAD', 'Invalid room:save_snapshot payload.')
+        return
+      }
+
+      if (!(await enforceEventAccess(socket, payload.roomId, 'room:save_snapshot'))) {
+        return
+      }
+
+      const snapshot: SnapshotEntry = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        name: payload.name.trim(),
+        author: payload.author.trim(),
+        createdAt: Date.now(),
+        updateBase64: payload.updateBase64,
+      }
+      const nextSnapshots = [snapshot, ...getRoomSnapshots(payload.roomId)]
+      setRoomSnapshots(payload.roomId, nextSnapshots)
+
+      io.to(payload.roomId).emit('room:snapshots', {
+        roomId: payload.roomId,
+        snapshots: nextSnapshots,
+      })
     })
 
     socket.on('disconnect', () => {
