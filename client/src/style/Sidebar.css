@@ -227,6 +227,65 @@
   transition: transform 0.1s;
 }
 
+.memory-section {
+  margin-top: 12px;
+  border-top: 1px solid #ddd6fe;
+  padding-top: 8px;
+}
+
+.memory-empty {
+  color: #6b7280;
+  font-size: 12px;
+  padding: 4px 10px 8px;
+}
+
+.memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 6px 10px;
+}
+
+.memory-item {
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid #ddd6fe;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.memory-item-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.memory-item-meta {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.memory-item-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.memory-btn {
+  border: 1px solid #c4b5fd;
+  background: #ffffff;
+  color: #4b5563;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.memory-btn.restore {
+  border-color: #a78bfa;
+  color: #5b21b6;
+}
+
 /* Scrollbar */
 .sidebar::-webkit-scrollbar {
   width: 7px;
