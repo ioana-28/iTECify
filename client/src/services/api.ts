@@ -43,6 +43,18 @@ export type Room = {
   created_at: string
 }
 
+export type Project = {
+  id: string
+  name: string
+  primaryLanguage: string
+  roomId: string
+  roomInviteCode: string
+  treeSnapshot: string
+  createdAt: string
+  updatedAt: string
+  lastOpenedAt: string
+}
+
 export type ExecutePayload = {
   language: RunLanguage
   source: string
@@ -176,6 +188,38 @@ async function listRooms(): Promise<{ rooms: Room[] }> {
   return requestJson<{ rooms: Room[] }>('/api/rooms')
 }
 
+async function createProject(payload: {
+  name: string
+  primaryLanguage: string
+  treeSnapshot?: unknown
+}): Promise<{ project: Project; room: Room }> {
+  return requestJson<{ project: Project; room: Room }>('/api/projects', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+async function listProjects(): Promise<{ projects: Project[] }> {
+  return requestJson<{ projects: Project[] }>('/api/projects')
+}
+
+async function listAllProjects(): Promise<{ projects: Project[] }> {
+  return requestJson<{ projects: Project[] }>('/api/projects/all')
+}
+
+async function joinProjectByCode(code: string): Promise<{ project: Project; room: Room }> {
+  return requestJson<{ project: Project; room: Room }>('/api/projects/join', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  })
+}
+
+async function openProject(projectId: string): Promise<{ project: Project; room: Room }> {
+  return requestJson<{ project: Project; room: Room }>(`/api/projects/${projectId}/open`, {
+    method: 'POST',
+  })
+}
+
 async function editFileWithAi(payload: EditFileWithAiPayload): Promise<EditFileWithAiResponse> {
   return requestJson<EditFileWithAiResponse>('/api/ai/edit-file', {
     method: 'POST',
@@ -196,6 +240,11 @@ export const apiClient = {
   createRoom,
   joinRoom,
   listRooms,
+  createProject,
+  listProjects,
+  listAllProjects,
+  joinProjectByCode,
+  openProject,
   editFileWithAi,
   streamExecution,
 }

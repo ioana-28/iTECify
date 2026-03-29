@@ -110,8 +110,9 @@ export async function findRoomByInviteCode(code: string): Promise<RoomRow | null
 export async function addMember(roomId: string, userId: number): Promise<RoomMembershipRow> {
   await db.query(
     `INSERT INTO room_memberships (room_id, user_id, role)
-     VALUES ($1, $2, 'member')
-     ON CONFLICT (room_id, user_id) DO NOTHING`,
+      VALUES ($1, $2, 'member')
+     ON CONFLICT (room_id, user_id) DO UPDATE
+     SET joined_at = NOW()`,
     [roomId, userId],
   )
 
