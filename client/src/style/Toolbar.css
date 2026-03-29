@@ -1,0 +1,153 @@
+/* Toolbar - Soft Pastel Purple */
+.toolbar {
+  background: linear-gradient(180deg, rgba(237, 233, 254, 0.82) 0%, rgba(255, 255, 255, 0.88) 100%);
+  border-bottom: 1px solid #ddd6fe;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toolbar-btn {
+  background: #e9d5ff;
+  color: #5b21b6;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-family: inherit;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.toolbar-btn:hover {
+  filter: brightness(0.95);
+  transform: scale(1.05);
+}
+
+.toolbar-btn:active {
+  transform: scale(1.01);
+}
+
+.toolbar-btn.run {
+  background: #bbf7d0;
+  color: #166534;
+}
+
+.toolbar-btn.stop {
+  background: #fecaca;
+  color: #7f1d1d;
+}
+
+.toolbar-btn.ai {
+  background: #fde68a;
+  color: #92400e;
+}
+
+.toolbar-btn.copilot {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.toolbar-btn.copilot.active {
+  background: #a78bfa;
+  color: #ffffff;
+}
+
+.toolbar-btn.terminal {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
+.toolbar-btn.terminal.active {
+  background: #a855f7;
+  color: #ffffff;
+}
+
+.toolbar-center {
+  flex: 1;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.project-name {
+  color: #6b7280;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar-logout-btn {
+  background: #5b21b6;
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.toolbar-logout-btn:hover {
+  background: #4c1d95;
+  transform: scale(1.05);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .toolbar {
+    padding: 8px 10px;
+    min-height: 50px;
+  }
+
+  .toolbar-btn {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+
+  .toolbar-center {
+    display: none;
+  }
+
+  .toolbar-logout-btn {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .toolbar {
+    gap: 6px;
+  }
+
+  .toolbar-left {
+    gap: 4px;
+  }
+
+  .toolbar-btn {
+    padding: 5px 8px;
+    font-size: 10px;
+  }
+}

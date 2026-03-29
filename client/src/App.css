@@ -4,6 +4,10 @@
   min-height: 100vh;
 }
 
+.app-shell.login-shell {
+  grid-template-rows: 1fr;
+}
+
 .topbar {
   display: flex;
   justify-content: space-between;
@@ -37,6 +41,10 @@
 .app-content {
   background: #0b1016;
   color: #d9e0ea;
+}
+
+.app-shell.login-shell .app-content {
+  background: transparent;
 }
 
 .editor-layout {
