@@ -41,10 +41,38 @@
   gap: 10px;
 }
 
+.snapshot-restore-panel {
+  position: absolute;
+  top: 74px;
+  right: 14px;
+  z-index: 20;
+  width: min(320px, calc(100% - 28px));
+  background: linear-gradient(180deg, #f8f5ff 0%, #ffffff 100%);
+  border: 1px solid #c4b5fd;
+  border-radius: 12px;
+  box-shadow: 0 10px 22px rgba(124, 58, 237, 0.16);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .snapshot-save-title {
   font-size: 13px;
   font-weight: 700;
   color: #5b21b6;
+}
+
+.snapshot-restore-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #5b21b6;
+}
+
+.snapshot-restore-text {
+  font-size: 12px;
+  color: #4b5563;
+  line-height: 1.45;
 }
 
 .snapshot-save-input {

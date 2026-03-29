@@ -176,6 +176,7 @@ export function EditorScreen() {
   const [snapshotPreview, setSnapshotPreview] = useState(null)
   const [isSaveSnapshotPanelOpen, setIsSaveSnapshotPanelOpen] = useState(false)
   const [snapshotNameDraft, setSnapshotNameDraft] = useState('')
+  const [restoreSnapshotDraft, setRestoreSnapshotDraft] = useState(null)
   const [snapshotToast, setSnapshotToast] = useState('')
   const [copilotMessages, setCopilotMessages] = useState([
     {
@@ -1287,6 +1288,10 @@ export function EditorScreen() {
     setSnapshotNameDraft('')
   }, [])
 
+  const closeRestoreSnapshotPanel = useCallback(() => {
+    setRestoreSnapshotDraft(null)
+  }, [])
+
   const confirmSaveSnapshot = useCallback(() => {
     const didSave = createSnapshot(snapshotNameDraft)
     if (didSave) {
@@ -1315,29 +1320,35 @@ export function EditorScreen() {
     }
   }, [addTerminalOutput, fromBase64])
 
-  const restoreSnapshot = useCallback((snapshot) => {
+  const requestRestoreSnapshot = useCallback((snapshot) => {
     if (!snapshot?.updateBase64) {
       addTerminalOutput('Restore failed: invalid snapshot data.', 'error')
       return
     }
 
-    const shouldRestore = window.confirm('Are you sure you want to travel back in time?')
-    if (!shouldRestore) {
+    setRestoreSnapshotDraft(snapshot)
+  }, [addTerminalOutput])
+
+  const confirmRestoreSnapshot = useCallback(() => {
+    if (!restoreSnapshotDraft?.updateBase64) {
+      addTerminalOutput('Restore failed: invalid snapshot data.', 'error')
+      setRestoreSnapshotDraft(null)
       return
     }
 
     try {
       const restoredDoc = new Y.Doc()
-      Y.applyUpdate(restoredDoc, fromBase64(snapshot.updateBase64))
+      Y.applyUpdate(restoredDoc, fromBase64(restoreSnapshotDraft.updateBase64))
       const restoredCode = restoredDoc.getText('content').toString()
       handleAiUpdate(restoredCode)
       syncSnapshotDocFromCode(restoredCode)
-      addTerminalOutput(`Restored snapshot "${snapshot.name}".`, 'success')
+      addTerminalOutput(`Restored snapshot "${restoreSnapshotDraft.name}".`, 'success')
+      setRestoreSnapshotDraft(null)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Snapshot restore failed'
       addTerminalOutput(`Restore failed: ${message}`, 'error')
     }
-  }, [addTerminalOutput, fromBase64, syncSnapshotDocFromCode])
+  }, [addTerminalOutput, fromBase64, restoreSnapshotDraft, syncSnapshotDocFromCode])
 
   const handleCloseFile = (fileId) => {
     setOpenFiles(prev => prev.filter(f => f.id !== fileId))
@@ -1769,7 +1780,7 @@ Context handling requirements:
         snapshots={snapshots}
         onCreateSnapshot={openSaveSnapshotPanel}
         onPreviewSnapshot={previewSnapshot}
-        onRestoreSnapshot={restoreSnapshot}
+        onRestoreSnapshot={requestRestoreSnapshot}
         isPinguEnabled={isPinguEnabled}
         onTogglePingu={() => setIsPinguEnabled((previous) => !previous)}
         pinguStatus={pinguStatus}
@@ -1821,6 +1832,26 @@ Context handling requirements:
               </button>
               <button type="button" className="snapshot-save-cancel-btn" onClick={closeSaveSnapshotPanel}>
                 Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {restoreSnapshotDraft ? (
+          <div className="snapshot-restore-panel" role="dialog" aria-label="Restore snapshot confirmation">
+            <div className="snapshot-restore-title">Restore snapshot</div>
+            <div className="snapshot-restore-text">
+              Are you sure you want to restore
+              {' '}
+              <strong>{restoreSnapshotDraft.name}</strong>
+              ?
+            </div>
+            <div className="snapshot-save-actions">
+              <button type="button" className="snapshot-save-cancel-btn" onClick={closeRestoreSnapshotPanel}>
+                Cancel
+              </button>
+              <button type="button" className="snapshot-save-confirm-btn" onClick={confirmRestoreSnapshot}>
+                Restore
               </button>
             </div>
           </div>
