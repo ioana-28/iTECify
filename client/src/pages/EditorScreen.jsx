@@ -141,6 +141,7 @@ export function EditorScreen() {
   const selectionDisposableRef = useRef(null)
   const runControllerRef = useRef(null)
   const aiChangeDecorationIdsRef = useRef([])
+  const roomCopyFeedbackTimeoutRef = useRef(null)
   const snapshotDocRef = useRef(new Y.Doc())
   
   const [treeNodes, setTreeNodes] = useState(() => new Map())
@@ -160,10 +161,10 @@ export function EditorScreen() {
   const [pinguStatus, setPinguStatus] = useState('idle')
   const [rooms, setRooms] = useState([])
   const [currentRoomId, setCurrentRoomId] = useState('')
-  const [newRoomName, setNewRoomName] = useState('')
   const [joinCode, setJoinCode] = useState('')
   const [roomError, setRoomError] = useState('')
   const [isRoomBusy, setIsRoomBusy] = useState(false)
+  const [roomCopyFeedback, setRoomCopyFeedback] = useState('')
   const [isCopilotOpen, setIsCopilotOpen] = useState(false)
   const [copilotDraft, setCopilotDraft] = useState('')
   const [isCopilotBusy, setIsCopilotBusy] = useState(false)
@@ -285,6 +286,14 @@ export function EditorScreen() {
       if (snapshotToastTimeoutRef.current) {
         clearTimeout(snapshotToastTimeoutRef.current)
         snapshotToastTimeoutRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (roomCopyFeedbackTimeoutRef.current) {
+        clearTimeout(roomCopyFeedbackTimeoutRef.current)
       }
     }
   }, [])
@@ -1619,23 +1628,6 @@ Context handling requirements:
     }
   }
 
-  const handleCreateRoom = async () => {
-    try {
-      setIsRoomBusy(true)
-      setRoomError('')
-      const created = await apiClient.createRoom(newRoomName || undefined)
-      const nextRooms = [created.room, ...rooms]
-      setRooms(nextRooms)
-      setCurrentRoomId(created.room.id)
-      setNewRoomName('')
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create room'
-      setRoomError(message)
-    } finally {
-      setIsRoomBusy(false)
-    }
-  }
-
   const handleJoinRoom = async () => {
     try {
       setIsRoomBusy(true)
@@ -1650,6 +1642,28 @@ Context handling requirements:
     } finally {
       setIsRoomBusy(false)
     }
+  }
+
+  const handleCopyInviteCode = async () => {
+    if (!currentRoom?.invite_code) {
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(currentRoom.invite_code)
+      setRoomCopyFeedback('Copied!')
+    } catch {
+      setRoomCopyFeedback('Copy failed')
+    }
+
+    if (roomCopyFeedbackTimeoutRef.current) {
+      clearTimeout(roomCopyFeedbackTimeoutRef.current)
+    }
+
+    roomCopyFeedbackTimeoutRef.current = setTimeout(() => {
+      setRoomCopyFeedback('')
+      roomCopyFeedbackTimeoutRef.current = null
+    }, 2000)
   }
 
   const handleEditorChange = (value) => {
@@ -1752,17 +1766,6 @@ Context handling requirements:
               <div className="room-controls-heading">Collaboration Rooms</div>
               <div className="room-controls-row">
                 <input
-                  className="room-input"
-                  type="text"
-                  placeholder="Room name (optional)"
-                  value={newRoomName}
-                  onChange={(event) => setNewRoomName(event.target.value)}
-                  disabled={isRoomBusy}
-                />
-                <button className="room-btn" onClick={handleCreateRoom} disabled={isRoomBusy}>
-                  Create room
-                </button>
-                <input
                   className="room-input code"
                   type="text"
                   placeholder="Invite code"
@@ -1776,22 +1779,16 @@ Context handling requirements:
               </div>
 
               <div className="room-controls-row">
-                <select
-                  className="room-select"
-                  value={currentRoomId}
-                  onChange={(event) => setCurrentRoomId(event.target.value)}
-                >
-                  {rooms.length === 0 ? <option value="">No rooms yet</option> : null}
-                  {rooms.map((room) => (
-                    <option key={room.id} value={room.id}>
-                      {room.name || 'Untitled room'} ({room.invite_code})
-                    </option>
-                  ))}
-                </select>
                 {currentRoom ? (
-                  <span className="room-invite">Invite code: <strong>{currentRoom.invite_code}</strong></span>
+                  <div className="room-invite-wrap">
+                    <span className="room-invite">Invite code: <strong>{currentRoom.invite_code}</strong></span>
+                    <button type="button" className="room-copy-btn" onClick={handleCopyInviteCode}>
+                      Copy
+                    </button>
+                    {roomCopyFeedback ? <span className="room-copy-feedback">{roomCopyFeedback}</span> : null}
+                  </div>
                 ) : (
-                  <span className="room-invite">Create or join a room to start collaboration.</span>
+                  <span className="room-invite">Join a room to start collaboration.</span>
                 )}
               </div>
               {roomError ? <div className="room-error">{roomError}</div> : null}
