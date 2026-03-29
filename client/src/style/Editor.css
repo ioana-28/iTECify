@@ -22,6 +22,103 @@
   overflow: hidden;
   background: linear-gradient(180deg, rgba(237, 233, 254, 0.68) 0%, rgba(255, 255, 255, 0.94) 100%);
   box-shadow: 0 8px 24px rgba(139, 92, 246, 0.1);
+  position: relative;
+}
+
+.snapshot-save-panel {
+  position: absolute;
+  top: 74px;
+  right: 14px;
+  z-index: 20;
+  width: min(300px, calc(100% - 28px));
+  background: linear-gradient(180deg, #f8f5ff 0%, #ffffff 100%);
+  border: 1px solid #c4b5fd;
+  border-radius: 12px;
+  box-shadow: 0 10px 22px rgba(124, 58, 237, 0.16);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.snapshot-save-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #5b21b6;
+}
+
+.snapshot-save-input {
+  height: 36px;
+  border: 1px solid #c4b5fd;
+  border-radius: 10px;
+  padding: 0 10px;
+  color: #1f2937;
+  background: #ffffff;
+  outline: none;
+}
+
+.snapshot-save-input:focus {
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.18);
+}
+
+.snapshot-save-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.snapshot-save-confirm-btn,
+.snapshot-save-cancel-btn {
+  height: 34px;
+  border-radius: 9px;
+  padding: 0 11px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.snapshot-save-confirm-btn {
+  border: 1px solid #8b5cf6;
+  background: #a78bfa;
+  color: #ffffff;
+}
+
+.snapshot-save-confirm-btn:hover:not(:disabled) {
+  background: #8b5cf6;
+  border-color: #8b5cf6;
+}
+
+.snapshot-save-confirm-btn:disabled {
+  border-color: #ddd6fe;
+  background: #ddd6fe;
+  color: #6b7280;
+  cursor: not-allowed;
+}
+
+.snapshot-save-cancel-btn {
+  border: 1px solid #d8b4fe;
+  background: #ffffff;
+  color: #6b21a8;
+}
+
+.snapshot-save-cancel-btn:hover {
+  background: #f5f3ff;
+}
+
+.snapshot-toast {
+  position: absolute;
+  top: 18px;
+  right: 16px;
+  z-index: 21;
+  border: 1px solid #c4b5fd;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #6d28d9;
+  padding: 7px 10px;
+  box-shadow: 0 8px 18px rgba(124, 58, 237, 0.14);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .editor-content {

@@ -123,6 +123,8 @@ export function EditorScreen() {
   const socketRef = useRef(null)
   const copilotInputRef = useRef(null)
   const copilotConversationEndRef = useRef(null)
+  const snapshotNameInputRef = useRef(null)
+  const snapshotToastTimeoutRef = useRef(null)
   const roomIdRef = useRef('')
   const userIdRef = useRef(`user-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`)
   const displayNameRef = useRef('Guest')
@@ -168,6 +170,9 @@ export function EditorScreen() {
   const [securityPopupMessage, setSecurityPopupMessage] = useState('')
   const [snapshots, setSnapshots] = useState([])
   const [snapshotPreview, setSnapshotPreview] = useState(null)
+  const [isSaveSnapshotPanelOpen, setIsSaveSnapshotPanelOpen] = useState(false)
+  const [snapshotNameDraft, setSnapshotNameDraft] = useState('')
+  const [snapshotToast, setSnapshotToast] = useState('')
   const [copilotMessages, setCopilotMessages] = useState([
     {
       id: 'assistant-welcome',
@@ -263,6 +268,24 @@ export function EditorScreen() {
 
     copilotInputRef.current.focus()
   }, [isCopilotOpen])
+
+  useEffect(() => {
+    if (!isSaveSnapshotPanelOpen || !snapshotNameInputRef.current) {
+      return
+    }
+
+    snapshotNameInputRef.current.focus()
+    snapshotNameInputRef.current.select()
+  }, [isSaveSnapshotPanelOpen])
+
+  useEffect(() => {
+    return () => {
+      if (snapshotToastTimeoutRef.current) {
+        clearTimeout(snapshotToastTimeoutRef.current)
+        snapshotToastTimeoutRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!copilotConversationEndRef.current) {
@@ -1134,7 +1157,39 @@ export function EditorScreen() {
       updateBase64,
     })
     addTerminalOutput(`Snapshot "${snapshotName}" saved.`, 'success')
+    return true
   }, [addTerminalOutput, syncSnapshotDocFromCode, toBase64])
+
+  const showSnapshotToast = useCallback((message) => {
+    if (snapshotToastTimeoutRef.current) {
+      clearTimeout(snapshotToastTimeoutRef.current)
+      snapshotToastTimeoutRef.current = null
+    }
+
+    setSnapshotToast(message)
+    snapshotToastTimeoutRef.current = setTimeout(() => {
+      setSnapshotToast('')
+      snapshotToastTimeoutRef.current = null
+    }, 2200)
+  }, [])
+
+  const openSaveSnapshotPanel = useCallback(() => {
+    setSnapshotNameDraft(`Snapshot ${new Date().toLocaleTimeString()}`)
+    setIsSaveSnapshotPanelOpen(true)
+  }, [])
+
+  const closeSaveSnapshotPanel = useCallback(() => {
+    setIsSaveSnapshotPanelOpen(false)
+    setSnapshotNameDraft('')
+  }, [])
+
+  const confirmSaveSnapshot = useCallback(() => {
+    const didSave = createSnapshot(snapshotNameDraft)
+    if (didSave) {
+      closeSaveSnapshotPanel()
+      showSnapshotToast('Snapshot saved')
+    }
+  }, [closeSaveSnapshotPanel, createSnapshot, showSnapshotToast, snapshotNameDraft])
 
   const previewSnapshot = useCallback((snapshot) => {
     if (!snapshot?.updateBase64) {
@@ -1605,12 +1660,7 @@ Context handling requirements:
         onCreateFile={(options) => handleCreateNode('file', options)}
         onCreateFolder={(options) => handleCreateNode('folder', options)}
         snapshots={snapshots}
-        onCreateSnapshot={() => {
-          const name = window.prompt("Name this memory:", `Snapshot ${new Date().toLocaleTimeString()}`)
-          if (name) {
-            createSnapshot(name)
-          }
-        }}
+        onCreateSnapshot={openSaveSnapshotPanel}
         onPreviewSnapshot={previewSnapshot}
         onRestoreSnapshot={restoreSnapshot}
       />
@@ -1627,6 +1677,46 @@ Context handling requirements:
           isCopilotOpen={isCopilotOpen}
           onToggleCopilot={() => setIsCopilotOpen((prev) => !prev)}
         />
+
+        {isSaveSnapshotPanelOpen ? (
+          <div className="snapshot-save-panel" role="dialog" aria-label="Save snapshot">
+            <div className="snapshot-save-title">Save snapshot</div>
+            <input
+              ref={snapshotNameInputRef}
+              className="snapshot-save-input"
+              type="text"
+              placeholder="Snapshot name"
+              value={snapshotNameDraft}
+              onChange={(event) => setSnapshotNameDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  confirmSaveSnapshot()
+                  return
+                }
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  closeSaveSnapshotPanel()
+                }
+              }}
+            />
+            <div className="snapshot-save-actions">
+              <button
+                type="button"
+                className="snapshot-save-confirm-btn"
+                onClick={confirmSaveSnapshot}
+                disabled={!snapshotNameDraft.trim()}
+              >
+                Save
+              </button>
+              <button type="button" className="snapshot-save-cancel-btn" onClick={closeSaveSnapshotPanel}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {snapshotToast ? <div className="snapshot-toast">{snapshotToast}</div> : null}
 
         <div className={`editor-content ${isCopilotOpen ? 'with-copilot' : ''}`}>
           <div className="editor-center-column">
@@ -1868,7 +1958,7 @@ Context handling requirements:
                   <textarea
                     ref={copilotInputRef}
                     className="copilot-input"
-                    placeholder="Ask Copilot..."
+                    placeholder="Ask Pingu AI..."
                     value={copilotDraft}
                     onChange={(event) => setCopilotDraft(event.target.value)}
                     onKeyDown={handleCopilotInputKeyDown}
