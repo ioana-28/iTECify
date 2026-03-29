@@ -178,6 +178,7 @@ export function HomePage() {
           </div>
         </div>
         <p className="home-message">Start your coding journey now!</p>
+        <p className="home-submessage">Collab. Code. Create.</p>
 
         <div className="home-login-wrap">
           <span className="button-bubble bubble-a" aria-hidden="true" />

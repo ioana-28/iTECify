@@ -148,6 +148,16 @@
   margin-bottom:10px;
 }
 
+.home-submessage {
+  margin: 0;
+  font-size: clamp(15px, 1.9vw, 20px);
+  line-height: 1.2;
+  color: rgba(97, 102, 118, 0.9);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-family: "Montserrat", "Segoe UI", sans-serif;
+}
+
 .home-login-wrap {
   position: relative;
   display: inline-flex;
@@ -435,6 +445,11 @@
     font-size: clamp(26px, 4.8vw, 36px);
   }
 
+  .home-submessage {
+    font-size: clamp(14px, 2.6vw, 17px);
+    letter-spacing: 0.02em;
+  }
+
   .sphere-one {
     width: 68px;
     height: 68px;
@@ -464,6 +479,11 @@
 
   .home-message {
     font-size: clamp(22px, 8vw, 30px);
+  }
+
+  .home-submessage {
+    font-size: clamp(13px, 4.2vw, 15px);
+    letter-spacing: 0.01em;
   }
 
   .home-login-button {
