@@ -138,6 +138,7 @@ export function EditorScreen() {
   const currentFilePathRef = useRef('')
   const versionRef = useRef(0)
   const lastEditorResyncAtRef = useRef(0)
+  const pendingKeepAllRef = useRef(null)
   const selectionDisposableRef = useRef(null)
   const runControllerRef = useRef(null)
   const aiChangeDecorationIdsRef = useRef([])
@@ -239,8 +240,6 @@ export function EditorScreen() {
       )
   }
 }, [clearAiChangeHighlights, currentRoomId])
-
- 
 
   useEffect(() => {
     const rawAuthUser = localStorage.getItem('authUser')
@@ -815,6 +814,75 @@ export function EditorScreen() {
     }, 0)
   }, [])
 
+  const emitEditorOperations = useCallback((previousCode, nextCode) => {
+    const socket = socketRef.current
+    if (!socket || !currentFilePathRef.current || !roomIdRef.current) {
+      return
+    }
+
+    const operations = buildEditorOperations(previousCode, nextCode)
+    operations.forEach((op, index) => {
+      const payload = {
+        roomId: roomIdRef.current,
+        docId: currentFilePathRef.current,
+        userId: userIdRef.current,
+        baseVersion: versionRef.current,
+        opId: `${userIdRef.current}-${Date.now()}-${index}`,
+        op,
+      }
+
+      socket.emit('editor:change', payload)
+      versionRef.current += 1
+    })
+  }, [buildEditorOperations])
+
+  const applyLocalCode = useCallback((nextCode) => {
+    const editor = editorRef.current
+    const model = editor?.getModel?.()
+    const monaco = monacoRef.current
+
+    if (editor && model && monaco) {
+      if (model.getValue() === nextCode) {
+        codeRef.current = nextCode
+        setCode(nextCode)
+        return nextCode
+      }
+
+      isRemoteChangeRef.current = true
+      const fullRange = model.getFullModelRange()
+      editor.executeEdits('local-apply', [
+        {
+          range: fullRange,
+          text: nextCode,
+          forceMoveMarkers: false,
+        },
+      ])
+
+      const appliedCode = model.getValue()
+      codeRef.current = appliedCode
+      setCode(appliedCode)
+      setTimeout(() => {
+        isRemoteChangeRef.current = false
+      }, 0)
+      return appliedCode
+    }
+
+    codeRef.current = nextCode
+    setCode(nextCode)
+    return nextCode
+  }, [])
+
+  const handleAiUpdate = useCallback((newFullCode) => {
+    const nextCode = newFullCode || ''
+    const previousCode = codeRef.current
+    const appliedCode = applyLocalCode(nextCode)
+    if (previousCode === appliedCode) {
+      return
+    }
+
+    emitEditorOperations(previousCode, appliedCode)
+  }, [applyLocalCode, emitEditorOperations])
+
   useEffect(() => {
     if (!currentRoomId) {
       return
@@ -849,6 +917,30 @@ export function EditorScreen() {
       } else {
         versionRef.current = 0
       }
+
+      const pendingKeepAll = pendingKeepAllRef.current
+      const shouldRetryKeepAll =
+        pendingKeepAll &&
+        typeof pendingKeepAll.content === 'string' &&
+        payload.content !== pendingKeepAll.content &&
+        pendingKeepAll.retries < 1 &&
+        Date.now() - pendingKeepAll.requestedAt < 5000
+
+      if (shouldRetryKeepAll) {
+        applyRemoteCodeUpdate(payload.content)
+        pendingKeepAllRef.current = {
+          ...pendingKeepAll,
+          retries: pendingKeepAll.retries + 1,
+          requestedAt: Date.now(),
+        }
+        handleAiUpdate(pendingKeepAll.content)
+        return
+      }
+
+      if (pendingKeepAll && payload.content === pendingKeepAll.content) {
+        pendingKeepAllRef.current = null
+      }
+
       applyRemoteCodeUpdate(payload.content)
     }
 
@@ -1069,7 +1161,7 @@ export function EditorScreen() {
       socket.disconnect()
       socketRef.current = null
     }
-  }, [addTerminalOutput, applyRemoteCodeUpdate, applyRemoteCursorDecorations, applyTextOperation, currentRoomId, requestRoomFileSync, requestTreeSync])
+  }, [addTerminalOutput, applyRemoteCodeUpdate, applyRemoteCursorDecorations, applyTextOperation, currentRoomId, handleAiUpdate, requestRoomFileSync, requestTreeSync])
 
   useEffect(() => {
     applyRemoteCursorDecorations()
@@ -1095,6 +1187,7 @@ export function EditorScreen() {
 
     currentFilePathRef.current = path
     requestRoomFileSync()
+    pendingKeepAllRef.current = null
     clearAiChangeHighlights()
   }
 
@@ -1407,37 +1500,6 @@ export function EditorScreen() {
     }
   }
 
-  const handleAiUpdate = (newFullCode) => {
-    const nextCode = newFullCode || ''
-    const previousCode = codeRef.current
-    if (previousCode === nextCode) {
-      return
-    }
-
-    codeRef.current = nextCode
-    setCode(nextCode)
-
-    const socket = socketRef.current
-    if (!socket || !currentFilePathRef.current || !roomIdRef.current) {
-      return
-    }
-
-    const operations = buildEditorOperations(previousCode, nextCode)
-    operations.forEach((op, index) => {
-      const payload = {
-        roomId: roomIdRef.current,
-        docId: currentFilePathRef.current,
-        userId: userIdRef.current,
-        baseVersion: versionRef.current,
-        opId: `${userIdRef.current}-${Date.now()}-${index}`,
-        op,
-      }
-
-      socket.emit('editor:change', payload)
-      versionRef.current += 1
-    })
-  }
-
   const isExplicitFullRewriteRequest = useCallback((instruction) => {
     const fullRewritePattern =
       /\b(full rewrite|rewrite (the )?(entire|whole) file|replace (the )?(entire|whole) file|from scratch|start over|overwrite (the )?file)\b/i
@@ -1570,17 +1632,22 @@ Context handling requirements:
       return
     }
 
-    if (!currentFile) {
+    if (!currentFilePathRef.current) {
       addTerminalOutput('Cannot apply suggestion: no file is currently open.', 'error')
       addCopilotMessage('assistant', 'Cannot apply suggestion: no file is currently open.')
       return
     }
 
     const currentContent = codeRef.current
-    const finalContent = pendingSuggestion.content || ''
+    const finalContent = typeof pendingSuggestion.content === 'string' ? pendingSuggestion.content : ''
 
     clearAiChangeHighlights()
     if (finalContent !== currentContent) {
+      pendingKeepAllRef.current = {
+        content: finalContent,
+        requestedAt: Date.now(),
+        retries: 0,
+      }
       handleAiUpdate(finalContent)
     }
 
@@ -1600,6 +1667,7 @@ Context handling requirements:
       return
     }
 
+    pendingKeepAllRef.current = null
     setPendingSuggestion(null)
     clearAiChangeHighlights()
     addTerminalOutput('AI suggestion discarded.', 'info')
