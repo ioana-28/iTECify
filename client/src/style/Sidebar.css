@@ -286,6 +286,63 @@
   color: #5b21b6;
 }
 
+.sidebar-pingu-panel {
+  border-top: 1px solid #d4c9fe;
+  background: rgba(255, 255, 255, 0.62);
+  padding: 10px 10px 12px;
+  flex-shrink: 0;
+}
+
+.sidebar-pingu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sidebar-pingu-header .section-title {
+  margin: 0;
+  padding: 0;
+}
+
+.pingu-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #4b5563;
+  user-select: none;
+}
+
+.pingu-toggle input {
+  margin: 0;
+  accent-color: #8b5cf6;
+}
+
+.sidebar-pingu-content {
+  margin-top: 8px;
+  min-height: 72px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+}
+
+.pingu-hint {
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.35;
+}
+
+.sidebar-pingu-image {
+  width: min(100%, 170px);
+  max-height: 120px;
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid #d6cafe;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 8px 16px rgba(139, 92, 246, 0.14);
+}
+
 /* Scrollbar */
 .sidebar::-webkit-scrollbar {
   width: 7px;

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getLanguageFromPath } from '../services/language'
+import pinguErrorImage from '../assets/IMG_0833 (1).png'
+import pinguSuccessImage from '../assets/IMG_0833 (2).png'
 import '../style/Sidebar.css'
 
 export const Sidebar = ({
@@ -13,6 +15,9 @@ export const Sidebar = ({
   onCreateSnapshot,
   onPreviewSnapshot,
   onRestoreSnapshot,
+  isPinguEnabled = false,
+  onTogglePingu,
+  pinguStatus = 'idle',
 }) => {
   const [expandedFolders, setExpandedFolders] = useState(new Set(['src']))
   const [pendingCreate, setPendingCreate] = useState(null)
@@ -190,6 +195,10 @@ export const Sidebar = ({
     cancelInlineCreate()
   }
 
+  const shouldShowPinguImage = isPinguEnabled && (pinguStatus === 'error' || pinguStatus === 'success')
+  const pinguImageSource = pinguStatus === 'error' ? pinguErrorImage : pinguSuccessImage
+  const pinguImageAlt = pinguStatus === 'error' ? 'Pingu reaction for run errors' : 'Pingu reaction for successful runs'
+
   return (
     <>
       {sidebarOpen && (
@@ -241,6 +250,31 @@ export const Sidebar = ({
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+
+          <div className="sidebar-pingu-panel">
+            <div className="sidebar-pingu-header">
+              <span className="section-title">Pingu</span>
+              <label className="pingu-toggle" htmlFor="pingu-toggle">
+                <input
+                  id="pingu-toggle"
+                  type="checkbox"
+                  checked={isPinguEnabled}
+                  onChange={() => onTogglePingu?.()}
+                />
+                <span>Enable Pingu</span>
+              </label>
+            </div>
+
+            <div className="sidebar-pingu-content">
+              {!isPinguEnabled ? <div className="pingu-hint">Turn on Enable Pingu to show run reactions.</div> : null}
+              {isPinguEnabled && !shouldShowPinguImage ? (
+                <div className="pingu-hint">Run code to show Pingu here.</div>
+              ) : null}
+              {shouldShowPinguImage ? (
+                <img className="sidebar-pingu-image" src={pinguImageSource} alt={pinguImageAlt} />
+              ) : null}
             </div>
           </div>
         </aside>

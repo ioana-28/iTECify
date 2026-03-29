@@ -5,6 +5,7 @@ import { config } from './config'
 import { authRoute } from './routes/authRoute'
 import { executionRoute } from './routes/executionRoute'
 import { healthRoute } from './routes/healthRoute'
+import { projectRoute } from './routes/projectRoute'
 import { roomRoute } from './routes/roomRoute'
 
 export function createApp() {
@@ -22,6 +23,7 @@ export function createApp() {
   app.use('/api/auth', authRoute)
   app.use('/api/ai', aiRoute)
   app.use('/api', roomRoute)
+  app.use('/api', projectRoute)
 
   app.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     res.status(500).json({ error: error.message })

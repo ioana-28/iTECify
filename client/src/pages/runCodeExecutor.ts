@@ -10,6 +10,7 @@ export type RunCodeExecutorParams = {
   stdin?: string
   mode?: RunMode
   onComplete?: () => void
+  onEvent?: (event: ExecutionEvent) => void
   setTerminalOpen: (open: boolean) => void
   addTerminalOutput: (text: string, type?: TerminalLineType) => void
 }
@@ -94,6 +95,7 @@ export async function runCodeExecutor(params: RunCodeExecutorParams): Promise<Ru
 
   state.stream.onmessage = (event) => {
     const payload = JSON.parse(event.data) as ExecutionEvent
+    params.onEvent?.(payload)
 
     if (payload.type === 'stdout' || payload.type === 'stderr' || payload.type === 'error') {
       queuedOutput.push(payload)

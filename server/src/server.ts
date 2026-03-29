@@ -7,6 +7,7 @@ import { registerCollaborationGateway } from './socket/collaborationGateway'
 import { ensureRoomFileVersionTable } from './services/roomFileVersionRepository'
 import { ensureCollaborationTables } from './services/roomRepository'
 import { ensureUsersTable } from './services/userRepository'
+import { ensureProjectsTable } from './services/projectRepository'
 
 const app = createApp()
 const server = http.createServer(app)
@@ -22,6 +23,7 @@ registerCollaborationGateway(io)
 async function bootstrap() {
   await ensureUsersTable()
   await ensureCollaborationTables()
+  await ensureProjectsTable()
   await ensureRoomFileNodeTable()
   await ensureRoomFileVersionTable()
 
