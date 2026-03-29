@@ -248,6 +248,107 @@
   font-size: 13px;
 }
 
+.projects-info {
+  margin: 10px 0 0;
+  color: #7f75b8;
+  font-size: 14px;
+}
+
+.projects-error {
+  margin: 10px 0 0;
+  color: #c24172;
+  font-size: 14px;
+}
+
+.project-empty {
+  border: 1px dashed #d9ccfb;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+  color: #867cb8;
+  font-size: 14px;
+}
+
+.projects-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(30, 25, 68, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.projects-modal {
+  width: 100%;
+  max-width: 440px;
+  border-radius: 18px;
+  border: 1px solid #dfd5fd;
+  background: #fff;
+  padding: 20px;
+  box-shadow: 0 22px 50px rgba(51, 39, 108, 0.22);
+}
+
+.projects-modal h3 {
+  margin: 0 0 14px;
+  color: #5f58a8;
+}
+
+.projects-modal-form {
+  display: grid;
+  gap: 12px;
+}
+
+.projects-modal-form label {
+  display: grid;
+  gap: 6px;
+  color: #6e66b0;
+  font-size: 14px;
+}
+
+.projects-modal-form input,
+.projects-modal-form select {
+  border: 1px solid #ddd0fc;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  outline: none;
+}
+
+.projects-modal-form input:focus,
+.projects-modal-form select:focus {
+  border-color: #b8a2f1;
+}
+
+.projects-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.projects-modal-actions button {
+  border-radius: 10px;
+  border: 1px solid #d7caf8;
+  background: #f8f5ff;
+  color: #5f58a8;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.projects-modal-actions button[type="submit"] {
+  background: linear-gradient(135deg, #8a72f5 0%, #7f9eff 100%);
+  color: #fff;
+  border: none;
+}
+
+.projects-modal-actions button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .right-intro h2 {
   margin: 0;
   color: #6655d4;
