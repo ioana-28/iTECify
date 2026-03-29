@@ -13,6 +13,7 @@ import {
   type RoomFileVersionRow,
 } from '../services/roomFileVersionRepository'
 import { isMember } from '../services/roomRepository'
+import { scanCode } from '../services/vulnerabilityScanner'
 
 type JoinPayload = {
   roomId: string
@@ -108,6 +109,15 @@ type TerminalStreamPayload = {
 }
 
 type TerminalOutputData = Omit<TerminalStreamPayload, 'roomId'>
+
+type CodeExecutePayload = {
+  roomId: string
+  userId: string
+  language: string
+  source: string
+  stdin?: string
+  stepMode?: boolean
+}
 
 type GatewayErrorPayload = {
   event: string
@@ -537,6 +547,47 @@ function isTerminalOutputData(data: unknown): data is TerminalOutputData {
   return isTerminalStreamPayload({ roomId: 'validation-room', ...data })
 }
 
+function isCodeExecutePayload(payload: unknown): payload is CodeExecutePayload {
+  if (!isObject(payload)) {
+    return false
+  }
+
+  const hasRequiredFields =
+    isNonEmptyString(payload.roomId) &&
+    isNonEmptyString(payload.userId) &&
+    isNonEmptyString(payload.language) &&
+    isString(payload.source)
+  if (!hasRequiredFields) {
+    return false
+  }
+
+  if (payload.stdin !== undefined && !isString(payload.stdin)) {
+    return false
+  }
+
+  if (payload.stepMode !== undefined && typeof payload.stepMode !== 'boolean') {
+    return false
+  }
+
+  return true
+}
+
+function buildChaosMessage(type: string | null): string {
+  if (type === 'file_deletion') {
+    return "Diva, why are you trying to get rid of my stuff? This isn't a breakup!"
+  }
+
+  if (type === 'rce_attack') {
+    return 'Honey, the only thing you should be executing is a better outfit. Leave my server alone!'
+  }
+
+  if (type === 'eval_chaos') {
+    return "Oh, look at you trying to be 'sneaky' with eval(). That's so last season, darling."
+  }
+
+  return 'Security diva says no: suspicious behavior detected.'
+}
+
 export function broadcastTerminalOutput(io: Server, roomId: string, data: TerminalOutputData): void {
   if (!isNonEmptyString(roomId)) {
     throw new TypeError('broadcastTerminalOutput requires a non-empty roomId.')
@@ -863,6 +914,26 @@ export function registerCollaborationGateway(io: Server): void {
         done: payload.done,
         timestamp: payload.timestamp,
       })
+    })
+
+    socket.on('code:execute', async (payload: unknown) => {
+      if (!isCodeExecutePayload(payload)) {
+        emitGatewayError(socket, 'code:execute', 'INVALID_PAYLOAD', 'Invalid code:execute payload.')
+        return
+      }
+
+      if (!(await enforceEventAccess(socket, payload.roomId, 'terminal:stream'))) {
+        return
+      }
+
+      const scanResult = scanCode(payload.source, payload.language)
+      if (!scanResult.isSafe) {
+        const message = buildChaosMessage(scanResult.type)
+        socket.emit('security:chaos_detected', { type: scanResult.type, message })
+        return
+      }
+
+      socket.emit('security:precheck_passed', { roomId: payload.roomId, ok: true })
     })
 
     socket.on('disconnect', () => {
